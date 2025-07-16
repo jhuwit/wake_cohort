@@ -1,0 +1,2012 @@
+---
+title: "Wake Manuscript Analyses"
+output: 
+  html_document:
+      toc: true
+      toc_float: true
+date: "2025"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = TRUE)
+
+library(here)
+library(ggpubr)
+library(tidyverse)
+library(tidymodels)
+library(patchwork)
+library(gt) 
+library(gtsummary)
+library(paletteer)
+theme_set(theme_light())
+options(dplyr.summarise.inform=F)
+col1 = "#F06719FF"; col2 = "#1BA3C6FF"
+col1a = "#7873C0FF"; col2a = "#21B087FF"; col3 = "#F06719FF";col4 = "#1BA3C6FF"; col5 = "#F64971FF"; col6= "#F8B620FF"
+source(here::here("code", "utilities.R"))
+```
+
+
+```{r}
+# read in covariates data 
+covars = read_rds(here::here("data", "processed", "covars_proc.rds"))
+
+hemo = read_rds(here::here("data", "processed", "hemo_analytic.rds"))  %>% 
+  filter(!is.na(cat_cpb)) %>% 
+  mutate(cat_cpb = factor(cat_cpb, levels = c("pre", "intra", "post")))
+
+map_only = 
+  hemo %>% 
+  group_by(id) %>% 
+  summarize(map_65 = sum(val_map < 65, na.rm = TRUE),
+            .groups = "drop")
+
+four_cats = 
+  hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  group_by(id) %>% 
+  summarize(low_map_low_ci = sum(val_map < 65 & val_ci < 2, na.rm = TRUE),
+            low_map_hi_ci = sum(val_map < 65 & val_ci >= 2, na.rm = TRUE),
+            hi_map_low_ci = sum(val_map >= 65 & val_ci < 2, na.rm = TRUE),
+            hi_map_hi_ci = sum(val_map >= 65 & val_ci >= 2, na.rm = TRUE),
+            .groups = "drop")
+            
+            
+
+## map ci 
+
+map_ci = read_rds(here::here("data", "analysis", "mapci_ranges.rds"))
+
+hemo = hemo %>% 
+  filter(id %in% map_ci$id)
+map_ci_post = read_rds(here::here("data", "analysis", "mapci_ranges_post.rds"))
+map_ci_pre = read_rds(here::here("data", "analysis", "mapci_ranges_pre.rds"))
+
+map_ci_cpb = 
+  map_ci_post %>% mutate(cat_cpb = "post") %>% 
+  bind_rows(map_ci_pre %>% mutate(cat_cpb = "pre"))
+
+ci_ranges4 = read_rds(here::here("data", "analysis", "ci_ranges4.rds"))
+ci_ranges7 = read_rds(here::here("data", "analysis", "ci_ranges7.rds"))
+
+map_data = read_rds(here::here("data", "analysis", "map_ranges.rds")) %>% 
+  filter(id %in% map_ci$id)
+mapci_tert = read_rds(here::here("data", "analysis", "mapci_ranges_tertile.rds"))
+mapci_quint = read_rds(here::here("data", "analysis", "mapci_ranges_quintile.rds"))
+covars = 
+  covars %>% 
+  filter(id %in% map_ci$id)
+
+wake_covars = 
+  covars %>% 
+  rename(bin_aki48h = bin_aki) %>% 
+  select(id, val_age, cat_gender, val_bmi, val_egfr,
+         bin_htn, bin_diabetes, bin_mi,
+         bin_chf, cat_ef,
+         bin_iabp, bin_stroke, bin_pvd,
+         bin_cld, bin_betablocker, bin_acearb,
+         bin_statin, val_creatlst, bin_redo, bin_emergent,
+         bin_aki48h, euro_predmort, val_proctime, val_crystalloid,
+         cat_rbc, val_cpbtime) %>% 
+  mutate(cohort = "WAKE") %>% 
+   mutate(val_ef = 
+           case_when(cat_ef == "20-25%" ~ runif(1, 20, 25),
+                     cat_ef == "40-45%" ~ runif(1, 40, 45),
+                     cat_ef == "45-50%" ~ runif(1, 45, 50),
+                     cat_ef == "65-70%" ~ runif(1, 65, 70),
+                     cat_ef == "15-20%" ~ runif(1, 15, 20),
+                     cat_ef == "30-35%" ~ runif(1, 30, 35),
+                     cat_ef == "35-40%" ~ runif(1, 35, 40),
+                     cat_ef == "25-30%" ~ runif(1, 25, 30),
+                     cat_ef == "70-75%" ~ runif(1, 70, 75),
+                     cat_ef == "50-55%" ~ runif(1, 50, 55),
+                     cat_ef == "60-65%" ~ runif(1, 60, 65),
+                     cat_ef == "55-60%" ~ runif(1, 55, 60))) %>% 
+  mutate(bin_ef40 = case_when(
+    cat_ef %in% c("15-20%", "20-25%", "25-30%", "30-35%", "35-40%") ~ "<=40%",
+    cat_ef %in% c("40-45%" ,"45-50%", "50-55%", "55-60%", "60-65%", "65-70%", "70-75%") ~ ">40%",
+    .default = NA_character_))
+
+ci_ranges = read_rds(here::here("data", "analysis", "ci_ranges.rds"))
+ci_data = read_rds(here::here("data", "analysis", "ci_data.rds"))
+
+```
+
+
+
+# Table 1
+
+## By AKI
+
+```{r}
+
+tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
+                         strata = "bin_aki48h",
+                         factorVars =  colnames(covars %>% select(starts_with("bin"),
+                                                                  starts_with("cat"))),
+                         data = wake_covars)
+
+
+```
+
+
+
+## By Tertiles of minutes in ranges 
+
+### Time with CI < 2
+
+```{r}
+ci_tertiles = 
+  ci_data %>% 
+  summarize(across(ci_20, ~quantile(.x, c(1/3, 2/3)))) %>% 
+  pull(ci_20)
+ci_tertiles 
+temp_ci = 
+  ci_data %>% 
+  mutate(tertile = case_when(
+    ci_20 <= ci_tertiles[1] ~ "t1",
+    ci_20 <= ci_tertiles[2] ~ "t2",
+    .default = "t3"
+  )) %>% 
+  select(tertile, id) %>% 
+  left_join(wake_covars, by = "id")
+
+t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
+                         strata = "tertile",
+                         factorVars =  colnames(covars %>% select(starts_with("bin"),
+                                                                  starts_with("cat"))),
+                         data = temp_ci)
+t 
+# t = print(t)
+# write.csv(t, here::here("manuscript", "ci_tertile_table.csv"))
+```
+
+
+### Time with MAP < 65
+
+```{r}
+map_65 = 
+  hemo %>% 
+  group_by(id) %>% 
+  summarize(map_65 = sum(val_map < 65, na.rm = TRUE),
+            .groups = "drop") 
+map_tertiles = 
+  map_65 %>% 
+  summarize(across(map_65, ~quantile(.x, c(1/3, 2/3), na.rm = TRUE))) %>% 
+  pull(map_65)
+map_tertiles 
+temp_map = 
+   map_65 %>% 
+  mutate(tertile = case_when(
+    map_65 <= map_tertiles[1] ~ "t1",
+    map_65 <= map_tertiles[2] ~ "t2",
+    .default = "t3"
+  )) %>% 
+  select(tertile, id) %>% 
+  left_join(wake_covars, by = "id")
+
+t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
+                         strata = "tertile",
+                         factorVars =  colnames(covars %>% select(starts_with("bin"),
+                                                                  starts_with("cat"))),
+                         data = temp_map)
+t
+# t = print(t)
+# write.csv(t, here::here("manuscript", "map_tertile_table.csv"))
+
+```
+
+### Time with MAP < 65 and CI < 2
+
+```{r}
+map_65_ci2 = 
+  hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  group_by(id) %>% 
+  summarize(map65_ci2 = sum(val_map < 65 & val_ci < 2, na.rm = TRUE),
+            .groups = "drop") 
+
+map_tertiles = 
+  map_65_ci2 %>% 
+  summarize(across(map65_ci2, ~quantile(.x, c(1/3, 2/3)))) %>% 
+  pull(map65_ci2)
+map_tertiles 
+
+temp_map = 
+   map_65_ci2 %>% 
+    mutate(tertile = case_when(
+    map65_ci2 <= map_tertiles[1] ~ "t1",
+    map65_ci2 <= map_tertiles[2] ~ "t2",
+    .default = "t3"
+  )) %>% 
+  select(tertile, id) %>% 
+  left_join(wake_covars, by = "id")
+
+t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
+                         strata = "tertile",
+                         factorVars =  colnames(covars %>% select(starts_with("bin"),
+                                                                  starts_with("cat"))),
+                         data = temp_map)
+t
+# t = print(t)
+# write.csv(t, here::here("manuscript", "mapci_tertile_table.csv"))
+
+```
+
+# Individuals with time in range 
+
+## CI 
+
+```{r}
+
+ci_ranges4 %>% 
+  filter(id %in% wake_covars$id) %>% 
+  summarize(across(contains("ci"),
+                   list(mean = mean,
+                        sd = sd,
+                        num5 = ~ sum(.x >= 5),
+                        pct5 = ~sum(.x >= 5)/n()))) %>% 
+  mutate(id = "id") %>% 
+  pivot_longer(cols = -id) %>% 
+  rowwise() %>% 
+  mutate(measure = sub(".*\\_", "", name),
+         metric = strsplit(name, "_")[[1]][2]) %>% 
+  ungroup() %>% 
+  select(-name, -id) %>% 
+  mutate(metric = factor(metric, levels = c("[0,2]", "(2,2.4]", "(2.4,2.8]", "(2.8,13]"))) %>% 
+  pivot_wider(names_from = measure, values_from = value) %>% 
+  mutate(lb = mean - sd, ub = mean + sd) %>% 
+  pivot_longer(cols = c(num5, pct5, mean)) %>% 
+  filter(name %in% c("pct5", "mean")) %>% 
+  mutate(value = ifelse(name == "pct5", value * 100, value),
+         lb = ifelse(name == "mean", lb, NA),
+         ub = ifelse(name == "mean", ub, NA)) %>% 
+  ggplot(aes(x = metric, y = value, fill = name))+
+  geom_errorbar(aes(ymin = value, ymax = ub), position = position_dodge(width=0.9),
+                size = .1,width=0.5)+
+  theme_bw() +
+  labs(x = "CI (mmHg) Range", y = "") +
+  theme(legend.position = "bottom") +
+  scale_fill_manual(
+    values = c("#5cB85cff", "#357ebdff"),
+    labels = c(
+      "Mean minutes in range",
+      "Percent individuals with at least 5 minutes in range"
+    ),
+    name = ""
+  ) +
+  geom_bar(position = position_dodge(),
+           stat = "identity",
+           colour = "black") +
+  geom_errorbar(aes(ymin = value, ymax = ub),
+                position = position_dodge(),
+                size = .5)
+```
+
+
+## MAP 
+
+```{r}
+map_data %>% 
+  filter(id %in% wake_covars$id) %>% 
+  summarize(across(contains("map"),
+                   list(mean = mean,
+                        sd = sd,
+                        num5 = ~ sum(.x >= 5),
+                        pct5 = ~sum(.x >= 5)/n()))) %>% 
+  mutate(id = "id") %>% 
+  pivot_longer(cols = -id) %>% 
+  rowwise() %>% 
+  mutate(measure = sub(".*\\_", "", name),
+         metric = strsplit(name, "_")[[1]][2]) %>% 
+  ungroup() %>% 
+  select(-name, -id) %>% 
+  mutate(metric = factor(metric, levels = map_data %>% select(-id) %>% colnames %>% sub(".*map\\_", "", .))) %>% 
+  pivot_wider(names_from = measure, values_from = value) %>% 
+  mutate(lb = mean - sd, ub = mean + sd) %>% 
+  pivot_longer(cols = c(num5, pct5, mean)) %>% 
+  filter(name %in% c("pct5", "mean")) %>% 
+  mutate(value = ifelse(name == "pct5", value * 100, value),
+         lb = ifelse(name == "mean", lb, NA),
+         ub = ifelse(name == "mean", ub, NA)) %>% 
+  ggplot(aes(x = metric, y = value, fill = name))+
+  geom_errorbar(aes(ymin = value, ymax = ub), position = position_dodge(width=0.9),
+                size = .1,width=0.5)+
+  theme_bw() +
+  labs(x = "MAP (mmHg) Range", y = "") +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 30, vjust = .5)) +
+  scale_fill_manual(
+    values = c("#5cB85cff", "#357ebdff"),
+    labels = c(
+      "Mean minutes in range",
+      "Percent individuals with at least 5 minutes in range"
+    ),
+    name = ""
+  ) +
+  geom_bar(position = position_dodge(),
+           stat = "identity",
+           colour = "black") +
+  geom_errorbar(aes(ymin = value, ymax = ub),
+                position = position_dodge(),
+                size = .5)
+```
+
+## MAP and CI 
+
+### Table 
+
+```{r}
+
+map_ci %>% 
+  summarize(across(contains("map"), list(mean = mean, sd = sd, n = ~ sum(.x >= 5, na.rm = TRUE), pctn = ~sum(.x >= 5, na.rm = TRUE) / n()))) %>% 
+  pivot_longer(cols = everything()) %>% 
+  mutate(map = sub(".*map_([^_]*)_.*", "\\1", name),
+         ci = sub(".*ci_([^_]*)_.*", "\\1", name),
+         metric = sub(".*_(.*)", "\\1", name)) %>% 
+  select(value, map, ci, metric) %>% 
+  pivot_wider(names_from = metric, values_from = value) %>% 
+  mutate(pctn = pctn*100,
+         across(c(mean, sd, pctn), ~sprintf("%.2g", signif(.x, 2)))) %>% 
+  mutate(mean_sd = paste0(mean, " (", sd, ")"),
+         n_pct = paste0(n, " (", pctn, ")")) %>% 
+  mutate(map = c(rep("<65", 4), rep(">=65", 4)),
+ci = rep(c("<=2", "(2,2.4]", "(2.4, 2.8]", ">2.8"), 2)) %>% 
+  select(map, ci, mean_sd, n_pct)  %>% 
+  magrittr::set_colnames(c("MAP", "CI", "Mean (SD)", "n (%)")) %>% 
+  gt::gt()
+
+```
+
+### Figures 
+
+```{r}
+
+
+        
+map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  summarize(across(contains("map"), 
+                   list(mean = mean, sd = sd, 
+                        n = ~ sum(.x >= 5, na.rm = TRUE), 
+                        pctn = ~sum(.x >= 5, na.rm = TRUE) / n()))) %>% 
+  pivot_longer(cols = everything()) %>% 
+  mutate(map = sub(".*map_([^_]*)_.*", "\\1", name),
+         ci = sub(".*ci_([^_]*)_.*", "\\1", name),
+         metric = sub(".*_(.*)", "\\1", name)) %>% 
+  select(value, map, ci, metric) %>% 
+  pivot_wider(names_from = metric, values_from = value) %>% 
+  mutate(map = factor(map, levels = c("[0,64]", "(64,Inf]"), labels = c("<65", ">=65")),
+         ci = factor(ci, levels = c("[0,2]", "(2,2.4]", "(2.4,2.8]", "(2.8,Inf]"),
+                     labels =  c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8"))) %>% 
+  mutate(across(c(mean, sd), ~sprintf("%.2g", signif(.x, 2)))) %>% 
+  mutate(fcol = 1:8) %>% 
+  ggplot(aes(x = map, y = ci, fill = factor(fcol))) + 
+  geom_tile(col = "black", alpha = .5) + 
+  scale_fill_manual(values = c("#ca001b", "#e51931", "#f37076", "#ff3237", "#137fc7", "#0f5fa5", "#55caff", "#19B2FFFF")) + 
+  geom_text(aes(label = paste0(mean, " (", sd,  ")")),
+            size = 8) + 
+  theme_classic(base_size = 14) + 
+  labs(x = "Mean Arterial Pressure (mmHg)", y = expression("Cardiac Output Indexed to \nBody Surface Area (L/min/"*m^2* ")"), title = "Mean (SD) minutes in range") + 
+  theme(legend.position = "none")
+
+```
+
+
+```{r}
+map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  summarize(across(contains("map"), 
+                   list(mean = mean, 
+                        sd = sd, 
+                        n = ~ sum(.x >= 5, na.rm = TRUE), 
+                        pctn = ~sum(.x >= 5, na.rm = TRUE) / n()))) %>% 
+  pivot_longer(cols = everything()) %>% 
+  mutate(map = sub(".*map_([^_]*)_.*", "\\1", name),
+         ci = sub(".*ci_([^_]*)_.*", "\\1", name),
+         metric = sub(".*_(.*)", "\\1", name)) %>% 
+  select(value, map, ci, metric) %>% 
+  pivot_wider(names_from = metric, values_from = value) %>% 
+mutate(map = factor(map, levels = c("[0,64]", "(64,Inf]"), labels = c("<65", ">=65")),
+         ci = factor(ci, levels = c("[0,2]", "(2,2.4]", "(2.4,2.8]", "(2.8,Inf]"),
+                     labels =  c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8"))) %>% 
+  mutate(fcol = factor(1:8)) %>% 
+  ggplot(aes(x = map, y = ci, fill = fcol)) + 
+  geom_tile(col = "black", alpha = .5) + 
+  geom_text(aes(label = paste0(n, " (", round(pctn*100, 0), "%)")), size = 8) + 
+  scale_fill_manual(values = c("#e51931", "#ca001b","#f37076", "#f37076",  
+                              "#55caff", "#0f5fa5" ,"#137fc7", "#55caff"))  + 
+  theme_classic(base_size = 14) + 
+  labs(x = "Mean Arterial Pressure (mmHg)", y = expression("Cardiac Output Indexed to \nBody Surface Area (L/min/" * m^2 * ")"), title = "Patients with at least 5 minutes in range n (%)") + 
+  theme(legend.position = "none")
+
+```
+
+
+## CI Exposure 
+
+ 
+ 
+```{r}
+ci_ranges4 %>% 
+  filter(id %in% wake_covars$id) %>% 
+  pivot_longer(cols = contains("ci")) %>% 
+  mutate(name = sub(".*ci\\_", "", name),
+         name = factor(name, levels = c("[0,2]", "(2,2.4]", "(2.4,2.8]", "(2.8,Inf]"),
+                       labels = c("<=2", "(2, 2.4]", "(2.4, 2.8]", ">2.8"))) %>% 
+  ggplot(aes(x = name, y = value)) + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(alpha = .3, size = .2,width = .1, color = "lightblue") +
+  labs(x = "Total Minutes in Range", y = expression("Quartile of Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")")) + 
+  scale_y_continuous(breaks=seq(0, 360, 60), limits = c(0, 180)) + 
+  theme(legend.position = "none") 
+ 
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  mutate(cat_cpb = factor(cat_cpb, levels = c("pre", "post"),
+                          labels = c("Pre-CPB", "Post-CPB"))) %>% 
+  ggplot(aes(x = val_ci)) +
+  facet_grid(. ~ cat_cpb) +
+  geom_histogram(
+    aes(y = ..density..),
+    binwidth = 0.5,
+    color = "black",
+    alpha = 0.7,
+    fill = "darkgrey"
+  ) +
+  geom_density(size = 1, fill = NA, color = "darkblue") +
+  theme_light() +
+  labs(x = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"), y = "Density") +
+  scale_x_continuous(breaks = seq(0, 10, 1), limits = c(0, 10)) +
+  theme(legend.position = "none") 
+```
+ 
+
+
+# Concurrent MAP/CI 
+
+## Distribution of times in ranges 
+
+```{r}
+
+map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  pivot_longer(cols = -id) %>% 
+  separate_wider_delim(name, "_", names = c("map", "ci")) %>% 
+  ggplot(aes(x = ci, y = value, color = map)) + 
+  geom_boxplot(outlier.size = .4, outlier.alpha = .5) + 
+  labs(x = expression("Quartile of Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"), y = "Total Minutes in Range Per Participant") + 
+  scale_y_continuous(breaks=seq(0,360,60), limits=c(0,180)) + 
+  scale_x_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
+  scale_color_manual(values = c("#009E73FF","#D55E00FF"),labels = c("<65", ">=65"), name = "Mean Arterial Pressure (mmHg)") +
+  theme(legend.position =c(0.2, .88))
+
+p = map_ci_cpb %>% 
+  filter(id %in% wake_covars$id) %>% 
+  magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4", "cat_cpb")) %>% 
+  mutate(cat_cpb = factor(cat_cpb, levels = c("pre", "post"), labels = c("Pre-CPB", "Post-CPB"))) %>% 
+  pivot_longer(cols = -c(id, cat_cpb)) %>% 
+  separate_wider_delim(name, "_", names = c("map", "ci")) %>% 
+  ggplot(aes(x = ci, y = value, color = map)) + 
+  facet_wrap(.~cat_cpb) + 
+  geom_boxplot(outlier.size = .4, outlier.alpha = .5) + 
+    labs( x = expression("Quartile of Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"),
+          y = "Total Minutes in Range Per Participant") + 
+  scale_y_continuous(breaks=seq(0,360,60), limits = c(0,180)) + 
+  scale_x_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
+ scale_color_manual(values = c("#009E73FF","#D55E00FF"),labels = c("<65", ">=65"), name = "Mean Arterial Pressure (mmHg)") + 
+  theme(legend.position =c(0.2, .88))
+p
+```
+
+# Regressions: primary analysis 
+
+## Univariate regressions 
+
+```{r} 
+df = 
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+result_uni = 
+  map_dfr(.x = df %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki48h", "~", x))
+      model <- glm(formula, data = df %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"), title = "Univariate Regressions", subtitle = "OR Associated w/ Additional 5 min in Range") + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+# result_uni %>% 
+#   mutate(p.value = format.pval(p.value, digits = 3)) %>% 
+#   write_csv(., here::here("manuscript", "univariate_regressions.csv"))
+```
+
+
+## Adjusted regressions
+
+Controlling for: 
+
++ Age
++ Sex
++ Bypass time
++ Baseline creatinine 
++ BMI
++ Hypertension
++ Diabetes
++ MI 
++ CHF 
++ EF (continuous)
++ Beta blocker
++ Ace/Arb
++ Statin
++ Redo 
++ Emergent
++ PVD 
++ Chronic lung disease
++ Stroke
+
+
+
+
+```{r}
+model = glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+# model %>% 
+#   broom::tidy(exponentiate = TRUE) %>% 
+#   mutate(p.value = format.pval(p.value, digits = 2))
+
+model %>% 
+  jtools::summ(exp = TRUE)
+
+model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "darkblue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"), title = "All bricks model w/ covariates", subtitle = "OR Associated w/ Additional 5 min in Range") + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+p = model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "#2A00FF", mid = "white", high = "red", midpoint = 1, name = "Odds Ratio") + 
+  labs(x = "Mean Arterial Pressure (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")")) + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+
+# model %>% 
+#   broom::tidy(exponentiate = TRUE) %>% 
+#   mutate(p.value = format.pval(p.value, digits = 3)) %>% 
+#   write_csv(., here::here("manuscript", "adjusted_regressions.csv"))
+```
+
+
+## Nested models 
+
+Comparing MAP <65 model with all MAP,CI combos and MAP <65
+
+```{r}
+df = 
+  df %>% 
+  left_join(map_only, by = "id")
+cor(df$map_65, df$hypo_q1)
+cor(df$map_65, df$hypo_q2)
+cor(df$map_65, df$hypo_q3)
+cor(df$map_65, df$hypo_q4)
+m1 = glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    map_65,
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("map"), ~ .x / 5)),
+  family = binomial()
+)
+m2 = 
+  glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    contains("q"),
+    map_65,
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
+  family = binomial()
+)
+
+m2 %>% 
+  jtools::summ(exp = TRUE)
+anova(m1, m2, test = "F")
+```
+
+Comparing MAP <65 model with low MAP low CI model 
+
+```{r}
+m1 = glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    map_65,
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("map"), ~ .x / 5)),
+  family = binomial()
+)
+m2 = 
+  glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    hypo_q1,
+    map_65,
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
+  family = binomial()
+)
+
+m2 %>% 
+  jtools::summ(exp = TRUE)
+anova(m1, m2, test = "F")
+```
+
+## Substitution 
+
+Sub 5 minutes MAP < 65, CI in quartile 1 (<2) to 5 minutes MAP < 65, CI in quartile 2 (2-2.4)
+
+```{r}
+m1 = 
+  glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
+  family = binomial()
+)
+
+k  <- matrix(c(0, -1, 1, rep(0, length(coef(m1)) - 3)), 1)
+contr <- multcomp::glht(m1, linfct = k)
+summary(contr)
+
+## 95 % CI 
+
+exp(-0.17914)
+
+exp(c(-0.17914 - (1.96 * 0.08536), -0.17914 + (1.96 * 0.08536)))
+
+
+```
+
+Sub 5 minutes MAP < 65, CI < 2 to 5 minutes MAP < 65, CI >= 2
+
+```{r}
+
+df2 = 
+  df %>% 
+  left_join(four_cats, by = "id") %>% 
+  select(-map_65)
+m1 = glm(
+  bin_aki48h ~ low_map_low_ci+  low_map_hi_ci + 
+    hi_map_low_ci + hi_map_hi_ci + 
+    cat_gender+
+    val_creatlst+
+    val_age+
+    val_bmi+
+    bin_htn+
+    bin_diabetes+
+    bin_stroke+
+    val_ef+
+    bin_mi+
+    bin_chf+
+    bin_pvd+
+    bin_cld+
+    bin_betablocker+
+    bin_acearb+
+    bin_statin+
+    bin_redo+
+    bin_emergent,
+  data = df2 %>%  mutate(across(contains("map"), ~ .x / 5)),
+  family = binomial()
+)
+k  <- matrix(c(0, -1, 1, rep(0, length(coef(m1)) - 3)), 1)
+contr <- multcomp::glht(m1, linfct = k)
+summary(contr)
+exp(-0.15226)
+
+exp(c(-0.15226 - (1.96 * 0.06079), -0.15226 + (1.96 * 0.06079)))
+
+```
+Sub 5 minutes MAP < 65, CI < 2 with 5 minutes MAP >= 65, CI < 2
+
+```{r}
+m1 = 
+  glm(
+  bin_aki48h ~ .,
+  data = df %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
+  family = binomial()
+)
+
+k  <- matrix(c(0, -1, 0, 0, 0, 1, rep(0, length(coef(m1)) - 6)), 1)
+contr <- multcomp::glht(m1, linfct = k)
+summary(contr)
+
+exp(-0.15557)
+```
+
+# Regressions: subgroup analyses 
+
+
+## Univariate 
+
+### LVEF groups 
+
+```{r} 
+low_lvef = wake_covars %>% 
+  filter(bin_ef40 == "<=40%") %>% 
+  pull(id)
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(id %in% low_lvef) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p1 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("LVEF <=40, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki == 1))))
+
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(!(id %in% low_lvef)) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p2 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("LVEF >40, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki == 1))))
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+
+
+```
+
+### Shock groups 
+
+```{r} 
+shock = wake_covars %>% 
+  filter(bin_iabp == 1 | bin_emergent == 1) %>% 
+  pull(id)
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(id %in% shock) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p1 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("Shock, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki == 1))))
+
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(!(id %in% shock)) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p2 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("No shock, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki == 1))))
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  mutate(name = factor(name),
+         name = forcats::fct_rev(name)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+
+
+```
+
+
+### eGFR groups 
+
+```{r} 
+low_egfr = wake_covars %>% 
+  filter(val_egfr < 60) %>% 
+  pull(id)
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(id %in% low_egfr) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p1 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("eGFR < 60, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki == 1))))
+
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(!(id %in% low_egfr)) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p2 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("eGFR >= 60, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki == 1))))
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+
+
+```
+
+### Surgery phase 
+
+
+```{r} 
+
+df_temp =  
+  map_ci_pre %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p1 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("Pre-CPB"))
+
+
+df_temp =  
+  map_ci_post %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+p2 = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = "Post-CPB")
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  mutate(name = factor(name, levels = c("Pre-CPB", "Post-CPB"))) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+
+
+```
+
+
+
+### Tertiles 
+
+```{r}
+
+df_temp =  
+  mapci_tert %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3",
+                            "normo_q1", "normo_q2", "normo_q3")) %>% 
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=2.2", "(2.2,2.7]", ">2.7")) 
+
+```
+
+### Quintiles 
+
+```{r}
+
+df_temp =
+  mapci_quint %>%
+  filter(id %in% wake_covars$id) %>%
+  magrittr::set_colnames(
+    c(
+      "id",
+      "hypo_q1",
+      "hypo_q2",
+      "hypo_q3",
+      "hypo_q4",
+      "hypo_q5",
+      "normo_q1",
+      "normo_q2",
+      "normo_q3",
+      "normo_q4",
+      "normo_q5"
+    )
+  ) %>%
+  left_join(covars)
+
+result_uni = 
+  map_dfr(.x = df_temp %>% select(contains("q")) %>% colnames,
+    .f = function(x){
+      formula <- as.formula(paste("bin_aki", "~", x))
+      model <- glm(formula, data = df_temp %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+      broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+    })
+
+result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=1.9", "(1.9,2.2]", "(2.2,2.6]", "(2.6,2.9]", ">2.9")) 
+
+```
+
+
+## Adjusted with all bricks in model 
+
+### LVEF groups 
+
+```{r} 
+low_lvef = wake_covars %>% 
+  filter(bin_ef40 == "<=40%") %>% 
+  pull(id)
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(id %in% low_lvef) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+
+p1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("LVEF <=40, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
+
+low_lvef_cv = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(term == "hypo_q1") %>% 
+  mutate(type = "LVEF <= 40")
+
+mod1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "low_lvef")
+  
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(!(id %in% low_lvef)) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+hi_lvef_cv = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(term == "hypo_q1") %>% 
+  mutate(type = "LVEF > 40")
+
+
+p2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("LVEF >40, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+mod2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "normal_lvef")
+
+# mod1 %>% 
+#   bind_rows(mod2) %>% 
+#   mutate(p.value = format.pval(p.value, digits = 3)) %>% 
+#   write_csv(here::here("manuscript", "lvef_sensitivity.csv"))
+```
+
+### Shock groups 
+
+```{r} 
+shock = wake_covars %>% 
+  filter(bin_iabp == 1 | bin_emergent == 1) %>% 
+  pull(id)
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(id %in% shock) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+m1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "shock")
+  
+shock_cv = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(term == "hypo_q1") %>% 
+  mutate(type = "Shock")
+p1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("Shock, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
+
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(!(id %in% shock)) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+noshock_cv = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(term == "hypo_q1") %>% 
+  mutate(type = "No shock")
+
+p2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("No shock, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  mutate(name = factor(name),
+         name = forcats::fct_rev(name)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+m2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>%
+  mutate(type = "no shock")
+
+# m1 %>%
+#   bind_rows(m2) %>%
+#   mutate(p.value = format.pval(p.value, digits = 3)) %>%
+#   write_csv(here::here("manuscript", "shock_sensitivity.csv"))
+```
+
+
+### eGFR groups 
+
+```{r} 
+low_egfr = wake_covars %>% 
+  filter(val_egfr < 60) %>% 
+  pull(id)
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(id %in% low_egfr) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+low_egfr_cv = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(term == "hypo_q1") %>% 
+  mutate(type = "eGFR < 60")
+
+m1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "low egfr")
+
+p1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("eGFR < 60, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
+
+
+df_temp =  
+  map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  filter(!(id %in% low_egfr)) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+hi_egfr_cv = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(term == "hypo_q1") %>% 
+  mutate(type = "eGFR >= 60")
+
+m2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "normal egfr")
+p2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("eGFR >= 60, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+# m1 %>%
+#   bind_rows(m2) %>%
+#   mutate(p.value = format.pval(p.value, digits = 3)) %>%
+#   write_csv(here::here("manuscript", "egfr_sensitivity.csv"))
+
+```
+
+### Forest plot 
+
+```{r}
+fplot_df = 
+  hi_egfr_cv %>% 
+  bind_rows(low_egfr_cv, shock_cv, noshock_cv, low_lvef_cv, hi_lvef_cv) %>% 
+  mutate(type = factor(type, levels = c("Shock", "No shock", "LVEF <= 40", "LVEF > 40",
+                                  "eGFR < 60", "eGFR >= 60"))) %>% 
+  mutate(group = 
+           case_when(grepl("hock", type) ~ "shock",
+                     grepl("eGFR", type) ~ "egfr",
+                     .default = "lvef")) %>% 
+  mutate(n = c(1014, 268, 111, 1171, 146, 1136),
+         n_cases = c(110, 75, 18, 167, 30, 155)) %>% 
+  mutate(x_num = 
+           case_when(type == "Shock" ~ 1,
+                     type == "No shock" ~ 2,
+                     type == "LVEF <= 40" ~ 4,
+                     type == "LVEF > 40" ~ 5,
+                     type == "eGFR < 60" ~ 7,
+                     .default = 8))
+
+library(paletteer)
+fplot_df %>% 
+  mutate(pval = paste0("p=", format.pval(round(p.value, 3), digits = 2))) %>% 
+  ggplot(aes(x = estimate, y = x_num, color = group)) + 
+  geom_point() + 
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = .2) + 
+  geom_vline(aes(xintercept = 1), linetype = "dashed") + 
+  labs(x = "Odds Ratio of AKI\nFor 5 additional minutes with low MAP and low CI", y = "") + 
+  scale_color_paletteer_d("ggthemes::colorblind", direction = -1) + 
+  theme_classic() + 
+  theme(legend.position = "none",
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 13)) +
+  scale_x_continuous(breaks=seq(0.8, 2.4, 0.2), limits = c(0.8, 2.6)) + 
+  geom_text(aes(x = conf.high + .2, y = x_num, label = paste0("n=", n, "\ncases=", n_cases)), size = 3) +
+  geom_text(aes(x = estimate, y = x_num, label = pval),
+            vjust = -1, size = 2.5, color = "black") + 
+  theme(axis.ticks.y = element_blank()) +
+  scale_y_continuous(breaks =seq(1:8), 
+          labels = c("Shock", "No shock","", "LVEF <= 40", "LVEF > 40", 
+                             "", "eGFR < 60", "eGFR >= 60")) 
+```
+
+
+### Surgery phase 
+
+
+```{r} 
+
+df_temp =  
+  map_ci_pre %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+m1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "pre cpb")
+
+p1 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = paste0("Pre-CPB"))
+
+
+df_temp =  
+  map_ci_post %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+
+m2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  mutate(type = "post cpb")
+p2 = 
+  model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  mutate(name = "Post-CPB")
+
+
+p1 %>% 
+  bind_rows(p2) %>% 
+  mutate(name = factor(name, levels = c("Pre-CPB", "Post-CPB"))) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  facet_grid(.~name) + 
+  scale_y_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) 
+
+# m1 %>%
+#   bind_rows(m2) %>%
+#   mutate(p.value = format.pval(p.value, digits = 3)) %>%
+#   write_csv(here::here("manuscript", "cpbphase_sensitivity.csv"))
+
+```
+
+
+
+### Tertiles 
+
+```{r}
+
+df_temp =  
+  mapci_tert %>% 
+  filter(id %in% wake_covars$id) %>% 
+   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3",
+                            "normo_q1", "normo_q2", "normo_q3")) %>% 
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+
+model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=2.2", "(2.2,2.7]", ">2.7")) 
+
+# model %>% 
+#   broom::tidy(exponentiate = TRUE) %>% 
+#   write_csv(here::here("manuscript", "tertile_regression_adj.csv"))
+```
+
+### Quintiles 
+
+```{r}
+
+df_temp =
+  mapci_quint %>%
+  filter(id %in% wake_covars$id) %>%
+  magrittr::set_colnames(
+    c(
+      "id",
+      "hypo_q1",
+      "hypo_q2",
+      "hypo_q3",
+      "hypo_q4",
+      "hypo_q5",
+      "normo_q1",
+      "normo_q2",
+      "normo_q3",
+      "normo_q4",
+      "normo_q5"
+    )
+  ) %>%
+  left_join(wake_covars)
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_temp %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    val_ef,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+
+model %>% 
+  broom::tidy(exponentiate = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 1, name = "OR") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Output Indexed to Body Surface Area (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", ">=65")) + 
+  scale_y_discrete(labels = c("<=1.9", "(1.9,2.2]", "(2.2,2.6]", "(2.6,2.9]", ">2.9")) 
+
+# model %>% 
+#   broom::tidy(exponentiate = TRUE) %>% 
+#   write_csv(here::here("manuscript", "quintile_regression_adj.csv"))
+
+```
+
+# Lasagna Plots
+
+```{r}
+
+plot_df = 
+  hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  group_by(id, cat_cpb) %>% 
+  mutate(time = as.numeric(difftime(time, min(time), units = "secs"))) %>% 
+  ungroup() %>% 
+  mutate(cat_map = cut(val_map, breaks=c(0, 65, Inf), right = FALSE),
+         # cat_ci = cut(val_ci, breaks=c(0, 2, 2.4, 2.8, Inf), right = TRUE)) %>% 
+         cat_ci = cut(val_ci, breaks = c(0, 2, Inf), right = TRUE)) %>% 
+  mutate(cat = paste0(cat_map, "_", cat_ci)) %>% 
+  mutate(cat = case_when(
+    grepl("NA", cat) ~ NA_character_,
+    cat == "[0,65)_(0,2]" ~ "Low MAP, Low CI",
+    cat == "[0,65)_(2,Inf]" ~ "Low MAP, Normal CI",
+    cat == "[65,Inf)_(2,Inf]" ~ "Normal MAP, Normal CI",
+    cat == "[65,Inf)_(0,2]" ~ "Normal MAP, Low CI",
+    .default = NA_character_
+  )) %>% 
+  mutate(cat_cpb = factor(cat_cpb, levels = c("pre", "post"), labels= c("Pre-CPB", "Post-CPB")))
+
+# paletteer_d("colorBlindness::PairedColor12Steps")
+
+
+n_sub = unique(plot_df$id) %>% length
+
+plot_df %>%
+  mutate(cat = factor(cat, levels = c("Low MAP, Low CI", "Normal MAP, Low CI","Low MAP, Normal CI", "Normal MAP, Normal CI"))) %>% 
+  mutate(cat = forcats::fct_na_value_to_level(cat),
+         cat = forcats::fct_rev(cat)) %>% 
+  ggplot(aes(x = time / 60, fill = cat, color = cat)) +
+  geom_bar() +
+  facet_wrap(~cat_cpb, scales = "free_x") +
+  scale_x_continuous(breaks=seq(0, 480, 30), labels = seq(0, 8, .5),
+                     limits = c(0, 4*60)) +
+  theme_classic() +
+  labs(x = "Time (hr)", y = "Proportion") +
+  scale_color_manual(values = c("#19B2FFFF", "#FFBF7FFF", "#FF99BFFF","#E51932FF", "#999999"), na.translate = TRUE, 
+                     labels = c("Normal MAP, Normal CI",
+                                "Low MAP, Normal CI",
+                                "Normal MAP, Low CI",
+                                "Low MAP, Low CI",
+                                "Missing"), name = "") +
+   scale_fill_manual(values = c("#19B2FFFF", "#FFBF7FFF", "#FF99BFFF","#E51932FF", "#999999"), na.translate = TRUE, 
+                     labels = c("Normal MAP, Normal CI",
+                                "Low MAP, Normal CI",
+                                "Normal MAP, Low CI",
+                                "Low MAP, Low CI",
+                                "Missing"), name = "") +
+  theme(legend.position = c(.85, .78),
+        legend.title = element_blank()) + 
+  scale_y_continuous(breaks = seq(0, n_sub, n_sub / 10), labels = seq(0, 1, .1))
+
+```
