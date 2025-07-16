@@ -1,0 +1,21 @@
+
+cvp_abs_diff_thresh = 10
+map_abs_diff_thresh = 30
+cvp_spike_thresh = 10
+cvp_spike_rtb_thresh = 1.1
+cvp_min_thresh = 0
+cvp_max_thresh = 25
+ci_min_thresh = 1
+map_max_thresh = 250
+map_min_thresh = 20
+cvp_abs_rm_pre = 1 * 60
+cvp_abs_rm_post = 2 * 60
+map_abs_rm_pre = 0.5 * 60
+map_abs_rm_post = 1.5 * 60
+cvp_spike_rm_post = 2 * 60
+cvp_spike_rm_pre = 0
+cvp_mag_rm_pre = 1 * 60
+cvp_mag_rm_post = 2 * 60
+map_mag_rm_pre = 0.5 * 60
+map_mag_rm_post = 1.5 * 60
+interp_thresh = 15 
