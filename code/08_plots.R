@@ -30,7 +30,7 @@ wake_covars =
          bin_cld, bin_betablocker, bin_acearb,
          bin_statin, val_creatlst, bin_redo, bin_emergent,
          bin_aki48h, euro_predmort, val_proctime, val_crystalloid,
-         cat_rbc, val_cpbtime) %>% 
+         cat_rbc, val_cpbtime, val_hematocrit) %>% 
   mutate(cohort = "WAKE") %>% 
   mutate(val_ef = 
            case_when(cat_ef == "20-25%" ~ 22.5,
@@ -305,7 +305,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -367,11 +368,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -425,11 +427,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -476,20 +479,21 @@ model = glm(
     val_bmi,
     bin_htn,
     bin_diabetes,
-    bin_stroke,
+    # bin_stroke,
     bin_ef40,
     bin_mi,
     bin_chf,
     bin_pvd,
-    bin_cld,
+    # bin_cld,
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -532,20 +536,21 @@ model = glm(
     val_bmi,
     bin_htn,
     bin_diabetes,
-    bin_stroke,
+    # bin_stroke,
     bin_ef40,
     bin_mi,
     bin_chf,
     bin_pvd,
-    bin_cld,
+    # bin_cld,
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -607,11 +612,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -665,11 +671,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -777,7 +784,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -827,7 +835,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -899,7 +908,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -975,7 +985,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )

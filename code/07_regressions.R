@@ -7,7 +7,7 @@ library(gt)
 library(gtsummary)
 library(paletteer)
 theme_set(theme_light())
-force = FALSE 
+force = FALSE
 options(dplyr.summarise.inform=F)
 col1 = "#F06719FF"; col2 = "#1BA3C6FF"
 col1a = "#7873C0FF"; col2a = "#21B087FF"; col3 = "#F06719FF";col4 = "#1BA3C6FF"; col5 = "#F64971FF"; col6= "#F8B620FF"
@@ -28,7 +28,7 @@ wake_covars =
          bin_cld, bin_betablocker, bin_acearb,
          bin_statin, val_creatlst, bin_redo, bin_emergent,
          bin_aki48h, euro_predmort, val_proctime, val_crystalloid,
-         cat_rbc, val_cpbtime) %>% 
+         cat_rbc, val_cpbtime, val_hematocrit) %>% 
   mutate(cohort = "WAKE") %>% 
   mutate(val_ef = 
            case_when(cat_ef == "20-25%" ~ 22.5,
@@ -127,12 +127,12 @@ df =
 result_uni = 
   map_dfr(.x = df %>% select(contains("q")) %>% colnames,
           .f = function(x){
-            formula <- as.formula(paste("bin_aki48h", "~", x))
-            model <- glm(formula, data = df %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
-            broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+            formula = as.formula(paste("bin_aki48h", "~", x))
+            model = glm(formula, data = df %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
+            broom::tidy(model, exponentiate = TRUE, conf.int = TRUE) %>% slice(2)
           })
 
-if(!file.exists(here::here("manuscript", "univarite_regressions.csv")) || force) {
+if(!file.exists(here::here("manuscript", "univariate_regressions.csv")) || force) {
   result_uni %>%
     mutate(p.value = format.pval(p.value, digits = 3)) %>%
     write_csv(., here::here("manuscript", "univariate_regressions.csv"))
@@ -142,7 +142,7 @@ if(!file.exists(here::here("manuscript", "univarite_regressions.csv")) || force)
 
 
 
-
+## fully adjusted 
 model = glm(
   bin_aki48h ~ .,
   data = df %>% select(
@@ -167,7 +167,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -176,7 +177,7 @@ model = glm(
 if(!file.exists(here::here("manuscript", "adjusted_regressions.csv")) ||
    force) {
   model %>%
-    broom::tidy(exponentiate = TRUE) %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
     mutate(p.value = format.pval(p.value, digits = 3)) %>%
     write_csv(., here::here("manuscript", "adjusted_regressions.csv"))
 } 
@@ -192,11 +193,6 @@ if(!file.exists(here::here("manuscript", "adjusted_regressions.csv")) ||
 df = 
   df %>% 
   left_join(map_only, by = "id")
-
-df2 = 
-  df %>% 
-  left_join(map_60, by = "id")
-
 
 
 m1 = glm(
@@ -220,10 +216,11 @@ m1 = glm(
     bin_acearb,
     bin_statin,
     bin_redo,
-    bin_emergent
-    # val_crystalloid,
-    # val_cpbtime,
-    # cat_rbc
+    bin_emergent,
+    val_hematocrit,
+    val_crystalloid,
+    val_cpbtime,
+    cat_rbc
   ) %>% mutate(across(contains("map"), ~ .x / 5)),
   family = binomial()
 )
@@ -251,6 +248,7 @@ m2 =
       bin_statin,
       bin_redo,
       bin_emergent,
+      val_hematocrit,
       val_crystalloid,
       val_cpbtime,
       cat_rbc
@@ -261,22 +259,44 @@ m2 =
 
 if(!file.exists(here::here("manuscript", "map65_regression_adj.csv")) || force) {
   m1 %>%
-    broom::tidy(exponentiate = TRUE) %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
     mutate(p.value = format.pval(p.value, digits = 3)) %>%
     write_csv(., here::here("manuscript", "map65_regression_adj.csv"))
 }
 
+if(!file.exists(here::here("manuscript", "map65_regression_adj_bricks.csv")) || force) {
+  m2 %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
+    mutate(p.value = format.pval(p.value, digits = 3)) %>%
+    write_csv(., here::here("manuscript", "map65_regression_adj_bricks.csv"))
+}
 
-m2 %>% 
-  jtools::summ(exp = TRUE)
+## map 65 unadjusted
+model = 
+  glm(bin_aki48h ~ map_65,
+      data = df %>% select(map_65, bin_aki48h) %>% mutate(across(contains("map"), ~ .x / 5)),
+      family = binomial()
+  )
+
+if(!file.exists(here::here("manuscript", "map65_regression_unadj.csv")) || force) { 
+  model %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
+    mutate(p.value = format.pval(p.value, digits = 3)) %>%
+    write_csv(here::here("manuscript", "map65_regression_unadj.csv"))
+  
+}
+
+
 
 
 
 # **ANOVA comparing full and reduced model** 
   
 
-anova(m1, m2, test = "F")
-
+anova(m1, m2, test = "Chisq")
+# Resid. Df Resid. Dev Df Deviance Pr(>Chi)
+# 1      1248     911.80                     
+# 2      1240     900.83  8   10.964   0.2037
 
 
 # **Comparing MAP <65 model with low MAP low CI model**
@@ -303,6 +323,7 @@ m1 = glm(
     bin_acearb,
     bin_statin,
     bin_redo,
+    val_hematocrit,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
@@ -336,15 +357,18 @@ m2 =
       bin_emergent,
       val_crystalloid,
       val_cpbtime,
-      cat_rbc
+      cat_rbc,
+      val_hematocrit
     ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
     family = binomial()
   )
 
-m2 %>% 
-  jtools::summ(exp = TRUE)
-anova(m1, m2, test = "F")
-
+# m2 %>% 
+  # jtools::summ(exp = TRUE)
+anova(m1, m2, test = "Chisq")
+# Resid. Df Resid. Dev Df Deviance Pr(>Chi)  
+# 1      1248      911.8                       
+# 2      1247      907.7  1   4.0946  0.04302 *
 
 ## Substitution 
 
@@ -376,7 +400,8 @@ m1 =
       bin_emergent,
       val_crystalloid,
       val_cpbtime,
-      cat_rbc
+      cat_rbc,
+      val_hematocrit
     ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
     family = binomial()
   )
@@ -386,12 +411,12 @@ contr =  multcomp::glht(m1, linfct = k)
 summary(contr)
 
 ## 95 % CI 
-pt_est = -0.17647
-se = 0.08762
+pt_est = -0.17617
+se = 0.08846
 exp(pt_est)
-
+# [1] 0.8384754
 exp(c(pt_est - (1.96 * se), pt_est + (1.96 * se)))
-
+# [1] 0.7050041 0.9972155
 
 
 # Sub 5 minutes MAP < 65, CI < 2 to 5 minutes MAP < 65, CI >= 2
@@ -424,7 +449,8 @@ m1 = glm(
     bin_emergent + 
     val_crystalloid + 
     val_cpbtime + 
-    cat_rbc,
+    cat_rbc+
+    val_hematocrit,
   data = df2 %>%  mutate(across(contains("map"), ~ .x / 5)),
   family = binomial()
 )
@@ -433,12 +459,12 @@ contr <- multcomp::glht(m1, linfct = k)
 summary(contr)
 
 ## 95 % CI 
-pt_est = -0.14112
-se = 0.06188
+pt_est = -0.13957  
+se = 0.06226
 exp(pt_est)
-
+# [1] 0.8697321
 exp(c(pt_est - (1.96 * se), pt_est + (1.96 * se)))
-
+# [1] 0.7698192 0.9826125]
 
 
 # Sub 5 minutes MAP < 65, CI < 2 with 5 minutes MAP >= 65, CI < 2
@@ -468,7 +494,8 @@ m1 =
       bin_emergent,
       val_crystalloid,
       val_cpbtime,
-      cat_rbc
+      cat_rbc,
+      val_hematocrit
     ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
     family = binomial()
   )
@@ -477,13 +504,13 @@ k  <- matrix(c(0, -1, 0, 0, 0, 1, rep(0, length(coef(m1)) - 6)), 1)
 contr <- multcomp::glht(m1, linfct = k)
 summary(contr)
 
-pt_est = -0.14156 
-se = 0.05262
+pt_est = -0.13051
+se = 0.05307
 exp(pt_est)
-
+# [1] 0.8776477
 exp(c(pt_est - (1.96 * se), pt_est + (1.96 * se)))
 
-
+# [1] 0.7909447 0.9738551
 
 # Regressions: subgroup analyses 
 ## Adjusted with all bricks in model 
@@ -521,11 +548,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -533,10 +561,10 @@ model = glm(
 
 p1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
-  mutate(p = format.pval(p.value, digits = 2),
+  mutate(p = format.pval(p.value, digits = 3),
          est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
   mutate(name = paste0("LVEF <=40, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
 
@@ -548,7 +576,7 @@ low_lvef_cv =
 
 mod1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "low_lvef")
 
 
@@ -579,11 +607,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -597,16 +626,16 @@ hi_lvef_cv =
 
 p2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
-  mutate(p = format.pval(p.value, digits = 2),
+  mutate(p = format.pval(p.value, digits = 3),
          est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
   mutate(name = paste0("LVEF >40, n = ", nrow(df_temp), ", n cases = ", nrow(df_temp %>% filter(bin_aki48h == 1))))
 
 mod2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "normal_lvef")
 
 if(!file.exists(here::here("manuscript", "lvef_sensitivity.csv")) || force) { 
@@ -643,26 +672,27 @@ model = glm(
     val_bmi,
     bin_htn,
     bin_diabetes,
-    bin_stroke,
+    # bin_stroke,
     bin_ef40,
     bin_mi,
     bin_chf,
     bin_pvd,
-    bin_cld,
+    # bin_cld,
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
 m1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "shock")
 
 shock_cv = 
@@ -673,7 +703,7 @@ shock_cv =
 
 p1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
@@ -700,20 +730,21 @@ model = glm(
     val_bmi,
     bin_htn,
     bin_diabetes,
-    bin_stroke,
+    # bin_stroke,
     bin_ef40,
     bin_mi,
     bin_chf,
     bin_pvd,
-    bin_cld,
+    # bin_cld,
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -725,7 +756,7 @@ noshock_cv =
 
 p2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
@@ -735,7 +766,7 @@ p2 =
 
 m2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>%
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
   mutate(type = "no shock")
 
 if(!file.exists(here::here("manuscript", "shock_sensitivity.csv")) || force) {
@@ -780,11 +811,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -797,12 +829,12 @@ low_egfr_cv =
 
 m1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "low egfr")
 
 p1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
@@ -838,11 +870,12 @@ model = glm(
     bin_betablocker,
     bin_acearb,
     bin_statin,
-    bin_redo,
+    # bin_redo,
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -855,11 +888,11 @@ hi_egfr_cv =
 
 m2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "normal egfr")
 p2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
@@ -908,18 +941,19 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
 m1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "pre cpb")
 
 p1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
@@ -959,7 +993,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -968,11 +1003,11 @@ model = glm(
 #   broom::tidy(exponentiate = TRUE, conf.int = TRUE)
 m2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   mutate(type = "post cpb")
 p2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
@@ -1023,14 +1058,15 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
 
 if(!file.exists(here::here("manuscript", "tertile_regression_adj.csv")) || force) { 
   model %>%
-    broom::tidy(exponentiate = TRUE) %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
     write_csv(here::here("manuscript", "tertile_regression_adj.csv"))
 }
 
@@ -1081,7 +1117,8 @@ model = glm(
     bin_emergent,
     val_crystalloid,
     val_cpbtime,
-    cat_rbc
+    cat_rbc,
+    val_hematocrit
   ) %>% mutate(across(contains("q"), ~ .x / 5)),
   family = binomial()
 )
@@ -1089,7 +1126,7 @@ model = glm(
 
 if(!file.exists(here::here("manuscript", "quintile_regression_adj.csv")) || force) { 
   model %>%
-    broom::tidy(exponentiate = TRUE) %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
     write_csv(here::here("manuscript", "quintile_regression_adj.csv"))
 
 }
@@ -1187,295 +1224,7 @@ jtools::export_summs(m0, m01, m1, m2, exp = TRUE,
                                "RBC 1" = "cat_rbc1"))
 
 
-```
-
-
-```{r}
-
-m0 = 
-  glm(bin_aki48h ~ .,
-      data = df %>% 
-        select(map_65, bin_aki48h) %>% 
-        mutate(across(contains("map"), ~ .x / 5)),
-      family = binomial())
-
-# m01 = 
-#   glm(bin_aki48h ~ .,
-#       data = df %>% 
-#         select(map_65, bin_aki48h, val_proctime, val_cpbtime) %>% 
-#         mutate(across(contains("map"), ~ .x / 5)),
-#       family = binomial())
-
-m1 = glm(
-  bin_aki48h ~ .,
-  data = df %>% select(
-    map_65,
-    bin_aki48h,
-    cat_gender,
-    val_creatlst,
-    val_age,
-    val_bmi,
-    bin_htn,
-    bin_diabetes,
-    bin_stroke,
-    bin_ef40,
-    bin_mi,
-    bin_chf,
-    bin_pvd,
-    bin_cld,
-    bin_betablocker,
-    bin_acearb,
-    bin_statin,
-    bin_redo,
-    bin_emergent,
-    val_proctime,
-    # val_crystalloid,
-    val_cpbtime,
-    # cat_rbc
-  ) %>% mutate(across(contains("map"), ~ .x / 5)),
-  family = binomial()
-)
-
-m2 = glm(
-  bin_aki48h ~ .,
-  data = df %>% select(
-    map_65,
-    bin_aki48h,
-    cat_gender,
-    val_creatlst,
-    val_age,
-    val_bmi,
-    bin_htn,
-    bin_diabetes,
-    bin_stroke,
-    bin_ef40,
-    bin_mi,
-    bin_chf,
-    bin_pvd,
-    bin_cld,
-    bin_betablocker,
-    bin_acearb,
-    bin_statin,
-    bin_redo,
-    bin_emergent,
-    val_proctime,
-    val_crystalloid
-    # val_cpbtime,
-    # cat_rbc
-  ) %>% mutate(across(contains("map"), ~ .x / 5)),
-  family = binomial()
-)
-
-m3 = 
-  glm(
-    bin_aki48h ~ .,
-    data = df %>% select(
-      map_65,
-      bin_aki48h,
-      cat_gender,
-      val_creatlst,
-      val_age,
-      val_bmi,
-      bin_htn,
-      bin_diabetes,
-      bin_stroke,
-      bin_ef40,
-      bin_mi,
-      bin_chf,
-      bin_pvd,
-      bin_cld,
-      bin_betablocker,
-      bin_acearb,
-      bin_statin,
-      bin_redo,
-      bin_emergent,
-      val_proctime,
-      # val_crystalloid,
-      # val_cpbtime,
-      cat_rbc
-    ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
-    family = binomial()
-  )
-
-jtools::export_summs(m0, m1, m2, m3, exp = TRUE,
-                     model.names = c("Uni", "CPB only", "Crystll only", "RBC only"),
-                     error_format = "(p = {p.value})",
-                     coefs = c("MAP<65" = "map_65",
-                               "CPB time" = "val_cpbtime",
-                               "Proc time" = "val_proctime",
-                               "Crystalloid" = "val_crystalloid",
-                               "RBC 0" = "cat_rbc0",
-                               "RBC 1" = "cat_rbc1"))
-
-
-```
-
-```{r}
-
-m4 = 
-  glm(
-    bin_aki48h ~ .,
-    data = df %>% select(
-      map_65,
-      bin_aki48h,
-      cat_gender,
-      val_creatlst,
-      val_age,
-      val_bmi,
-      bin_htn,
-      bin_diabetes,
-      bin_stroke,
-      bin_ef40,
-      bin_mi,
-      bin_chf,
-      bin_pvd,
-      bin_cld,
-      bin_betablocker,
-      bin_acearb,
-      bin_statin,
-      bin_redo,
-      bin_emergent,
-      val_proctime,
-      val_crystalloid,
-      val_cpbtime
-      # cat_rbc
-    ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
-    family = binomial()
-  )
-
-
-m5 = 
-  glm(
-    bin_aki48h ~ .,
-    data = df %>% select(
-      map_65,
-      bin_aki48h,
-      cat_gender,
-      val_creatlst,
-      val_age,
-      val_bmi,
-      bin_htn,
-      bin_diabetes,
-      bin_stroke,
-      bin_ef40,
-      bin_mi,
-      bin_chf,
-      bin_pvd,
-      bin_cld,
-      bin_betablocker,
-      bin_acearb,
-      bin_statin,
-      bin_redo,
-      bin_emergent,
-      val_proctime,
-      val_crystalloid,
-      # val_cpbtime
-      cat_rbc
-    ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
-    family = binomial())
-
-
-m6 = 
-  glm(
-    bin_aki48h ~ .,
-    data = df %>% select(
-      map_65,
-      bin_aki48h,
-      cat_gender,
-      val_creatlst,
-      val_age,
-      val_bmi,
-      bin_htn,
-      bin_diabetes,
-      bin_stroke,
-      bin_ef40,
-      bin_mi,
-      bin_chf,
-      bin_pvd,
-      bin_cld,
-      bin_betablocker,
-      bin_acearb,
-      bin_statin,
-      bin_redo,
-      bin_emergent,
-      val_proctime,
-      # val_crystalloid,
-      val_cpbtime,
-      cat_rbc
-    ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
-    family = binomial())
-
-m7 = 
-  glm(
-    bin_aki48h ~ .,
-    data = df %>% select(
-      map_65,
-      bin_aki48h,
-      cat_gender,
-      val_creatlst,
-      val_age,
-      val_bmi,
-      bin_htn,
-      bin_diabetes,
-      bin_stroke,
-      bin_ef40,
-      bin_mi,
-      bin_chf,
-      bin_pvd,
-      bin_cld,
-      bin_betablocker,
-      bin_acearb,
-      bin_statin,
-      bin_redo,
-      bin_emergent,
-      val_proctime,
-      val_crystalloid,
-      val_cpbtime,
-      cat_rbc
-    ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
-    family = binomial())
-
-jtools::export_summs(m4, m5, m6, m7, exp = TRUE,
-                     model.names = c("Cry+CPB", "Cry+RBC", "CPB+RBC", "All"),
-                     error_format = "(p = {p.value})",
-                     coefs = c("MAP<65" = "map_65",
-                               "CPB time" = "val_cpbtime",
-                               "Proc time" = "val_proctime",
-                               "Crystalloid" = "val_crystalloid",
-                               "RBC 0" = "cat_rbc0",
-                               "RBC 1" = "cat_rbc1"))
-
-```
-
-
-
-
-
-```{r}
-cor_dat = 
-  df %>% 
-  select(val_proctime,
-         map_65,
-         val_cpbtime)
-
-
-cor_mat = cor(cor_dat)
-
-cor_mat = cor(cor_dat)
-
-ggcorrplot::ggcorrplot(cor_mat, type = "lower", title = "WAKE Cohort", 
-                       lab = TRUE)
-ggcorrplot::ggcorrplot(cor_mat, type = "lower",
-                       outline.col = "white",
-                       ggtheme = ggplot2::theme_gray,lab = TRUE,
-                       colors = c("#6D9EC1", "white", "#E46726"))
-
-cor_mat = cor(cor_dat, method = "spearman")
-ggcorrplot::ggcorrplot(cor_mat, type = "lower",
-                       outline.col = "white",
-                       ggtheme = ggplot2::theme_gray,lab = TRUE,
-                       colors = c("#6D9EC1", "white", "#E46726"))
-```
+### map 65 regressions 
 
 
 

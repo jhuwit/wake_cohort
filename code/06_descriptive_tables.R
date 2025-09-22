@@ -8,7 +8,7 @@ library(gt)
 library(gtsummary)
 library(paletteer)
 theme_set(theme_light())
-force = FALSE 
+force = FALSE
 options(dplyr.summarise.inform=F)
 col1 = "#F06719FF"; col2 = "#1BA3C6FF"
 col1a = "#7873C0FF"; col2a = "#21B087FF"; col3 = "#F06719FF";col4 = "#1BA3C6FF"; col5 = "#F64971FF"; col6= "#F8B620FF"
@@ -29,7 +29,7 @@ wake_covars =
          bin_cld, bin_betablocker, bin_acearb,
          bin_statin, val_creatlst, bin_redo, bin_emergent,
          bin_aki48h, euro_predmort, val_proctime, val_crystalloid,
-         cat_rbc, val_cpbtime) %>% 
+         cat_rbc, val_cpbtime,val_hematocrit) %>% 
   mutate(cohort = "WAKE") %>% 
   mutate(val_ef = 
          case_when(cat_ef == "20-25%" ~ 22.5,
@@ -120,7 +120,10 @@ mapci_quint = read_rds(here::here("data", "analysis", "mapci_ranges_quintile.rds
 
 hemo %>% 
   filter(cat_cpb != "intra") %>% 
-  summarize(val = median(val_ci, na.rm = TRUE))
+  summarize(val = median(val_ci, na.rm = TRUE),
+            q25 = quantile(val_ci, 0.25, na.rm = TRUE),
+            q75 = quantile(val_ci, 0.75, na.rm = TRUE))
+
 
 hemo %>% 
   filter(cat_cpb != "intra") %>%
@@ -163,13 +166,14 @@ missing = hemo %>%
 
 t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
                              strata = "bin_aki48h",
-                             factorVars =  colnames(covars %>% select(starts_with("bin"),
-                                                                      starts_with("cat"))),
+                             factorVars =  colnames(wake_covars %>% select(starts_with("bin"))),
                              data = wake_covars)
 
 t 
 t = print(t)
-write.csv(t, here::here("manuscript", "table_one.csv"))
+if (!file.exists(here::here("manuscript", "table_one.csv")) || force){
+  write.csv(t, here::here("manuscript", "table_one.csv"))
+}
 
 
 ci_tertiles = 
@@ -189,7 +193,7 @@ temp_ci =
 
 t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
                              strata = "tertile",
-                             factorVars =  c(colnames(covars %>% select(starts_with("bin"),                                      starts_with("cat"))), "bin_aki48h"),
+                             factorVars =  colnames(wake_covars %>% select(starts_with("bin"))),
                              data = temp_ci)
 t 
 t = print(t)
@@ -233,8 +237,7 @@ temp_map =
 
 t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
                              strata = "tertile",
-                             factorVars =  colnames(covars %>% select(starts_with("bin"),
-                                                                      starts_with("cat"))),
+                             factorVars =  colnames(wake_covars %>% select(starts_with("bin"))),
                              data = temp_map)
 t
 t = print(t)
@@ -267,8 +270,7 @@ temp_map =
 
 t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
                              strata = "tertile",
-                             factorVars =  colnames(covars %>% select(starts_with("bin"),
-                                                                      starts_with("cat"))),
+                             factorVars =  colnames(wake_covars %>% select(starts_with("bin"))),
                              data = temp_map)
 t
 t = print(t)

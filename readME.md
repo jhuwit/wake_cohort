@@ -26,6 +26,12 @@ Files are as follows:
   + purpose: process covariates
   + input: `data/raw/WAKE.flatfile.IDsfixed.11.27.24.xlsx`
   + output: `data/processed/covars_proc.rds`
++ `06_descriptive_tables.R`
+  + purpose: generate tables for manuscript
++ `07_regressions.R`
+  + purpose: regressions and statistical tests for manuscript
++ `08_plots.R`
+  + purpose: figures for manuscript
 
 ### Utilities 
 

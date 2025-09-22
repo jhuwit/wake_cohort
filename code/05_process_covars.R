@@ -167,6 +167,18 @@ final = final %>%
   )
 
 
+### add in extra covariates from final wake extract 
+extra_covars = readxl::read_excel(here::here("data", "raw", "jhu.9.18.25.preophemoglobin.xlsx"),
+                                  col_types = c("text", "text", "numeric", "numeric")) %>% 
+  janitor::clean_names() %>% 
+  mutate(anemia_before_surgery = if_else(anemia_before_surgery == "N", 0, 1)) %>% 
+  rename(val_hematocrit = hematocrit, 
+          val_hemoglobin = hemoglobin,
+          bin_preopanemia = anemia_before_surgery)
+
+final = 
+  final %>% 
+  left_join(extra_covars, by = "id")
 
 write_rds(final, here::here("data", "processed", "covars_proc.rds"))
 
