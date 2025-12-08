@@ -271,3 +271,30 @@ write_rds(hemo_analytic, here::here("data", "processed", "hemo_analytic.rds"),
 
 
 
+x %>% filter(!wrong_procedure)
+x %>% filter(!wrong_procedure & has_mult_proc)
+x %>% filter(!wrong_procedure & !has_mult_proc & is_excluded_creat)
+temp = x %>% filter(!wrong_procedure & !has_mult_proc & !is_excluded_creat)
+
+temp %>% 
+  filter(is_missing_map_all | is_missing_cvp_all | is_missing_ci_all | exclude_hemo)
+
+temp2 = temp %>% 
+  filter(!(is_missing_map_all | is_missing_cvp_all | is_missing_ci_all | exclude_hemo))
+
+or_times = read_csv(here::here("data", "raw", "WAKE_OR_Times.IDfixed.11.29.24.csv")) %>% 
+  janitor::clean_names()
+
+
+start_ends = 
+  or_times %>% 
+  select(id, anes_ready = anesthesia_ready, 
+         anes_start = anesthesia_start,
+         anes_end = anesthesia_stop,
+         cpb_start = cv_bypass_initiated,
+         cpb_end = cv_bypass_ended) %>% 
+  mutate(across(-id, ~mdy_hm(.x, tz = "UTC")))
+
+start_ends %>% 
+  filter((id %in% temp2$id)) %>% 
+  filter(is.na(cpb_start) | is.na(cpb_end))

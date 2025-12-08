@@ -144,7 +144,16 @@ ci_data7 = get_ranges(hemo_data = hemo_data %>% filter(cat_cpb != "intra"),
 
 saveRDS(ci_data7, here::here("data", "analysis", "ci_ranges7.rds"))
 
+### get MAP AUC<65 
 
+
+map_auc_df = 
+  hemo_data %>% 
+  mutate(map_auc = if_else(val_map < 65, 65 - val_map, 0)) %>% 
+  group_by(id, cat_cpb) %>% 
+  summarize(map_auc = sum(map_auc, na.rm = TRUE))
+
+write_rds(map_auc_df, here::here("data", "analysis", "map_auc.rds"))
 
 ### 
 
@@ -384,5 +393,4 @@ ci_summary_strat =
   ungroup() %>% 
   mutate(across(starts_with("ci"), ~.x / minutes, .names = "{.col}_pct"))
 saveRDS(ci_summary_strat, here::here("data", "analysis", "ci_data_bycpb.rds"))
-
 

@@ -118,6 +118,13 @@ mapci_quint = read_rds(here::here("data", "analysis", "mapci_ranges_quintile.rds
 
 ## some stats for paper 
 
+four_cats_cpb  %>% 
+  group_by(cat_cpb) %>% 
+  summarize(across(low_map_low_ci,
+                   .fns = list(median = ~median(.x),
+                                q1 = ~quantile(.x, .25), 
+                                q3 = ~quantile(.x, .75)),
+                   .names = "{.col}_{.fn}"))
 hemo %>% 
   filter(cat_cpb != "intra") %>% 
   summarize(val = median(val_ci, na.rm = TRUE),
