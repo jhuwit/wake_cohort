@@ -116,137 +116,6 @@ if(!file.exists(here::here("manuscript", "adjusted_regressions.csv")) ||
     write_csv(., here::here("manuscript", "adjusted_regressions.csv"))
 } 
 
-## fully adjusted model with MAP < 60
-model = glm(
-  bin_aki48h ~ .,
-  data = df %>% select(
-    map_60,
-    bin_aki48h,
-    cat_gender,
-    val_creatlst,
-    val_age,
-    val_bmi,
-    bin_htn,
-    bin_diabetes,
-    bin_stroke,
-    bin_ef40,
-    bin_mi,
-    bin_chf,
-    bin_pvd,
-    bin_cld,
-    bin_betablocker,
-    bin_acearb,
-    bin_statin,
-    bin_redo,
-    bin_emergent,
-    val_crystalloid,
-    val_cpbtime,
-    cat_rbc,
-    val_hematocrit
-  ) %>% mutate(across(contains("map"), ~ .x / 5)),
-  family = binomial()
-)
-
-summary(df$map_60)
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 0.00   14.00   22.00   26.55   35.00  179.00 
-if(!file.exists(here::here("manuscript", "revision", "adjusted_regression_map60.csv")) ||
-   force) {
-  model %>%
-    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
-    mutate(p.value = format.pval(p.value, digits = 3)) %>%
-    write_csv(., here::here("manuscript", "revision", "adjusted_regression_map60.csv"))
-} 
-
-# fully adjusted model with MAP 55
-model = glm(
-  bin_aki48h ~ .,
-  data = df %>% select(
-    map_55,
-    bin_aki48h,
-    cat_gender,
-    val_creatlst,
-    val_age,
-    val_bmi,
-    bin_htn,
-    bin_diabetes,
-    bin_stroke,
-    bin_ef40,
-    bin_mi,
-    bin_chf,
-    bin_pvd,
-    bin_cld,
-    bin_betablocker,
-    bin_acearb,
-    bin_statin,
-    bin_redo,
-    bin_emergent,
-    val_crystalloid,
-    val_cpbtime,
-    cat_rbc,
-    val_hematocrit
-  ) %>% mutate(across(contains("map"), ~ .x / 5)),
-  family = binomial()
-)
-# 
-# summary(df$map_55)
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 0.00    5.00    9.00   11.65   15.00   95.00 
-
-if(!file.exists(here::here("manuscript", "revision", "adjusted_regression_map55.csv")) ||
-   force) {
-  model %>%
-    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
-    mutate(p.value = format.pval(p.value, digits = 3)) %>%
-    write_csv(., here::here("manuscript", "revision", "adjusted_regression_map55.csv"))
-} 
-
-# fully adjusted model with MAP AUC
-
-# 
-# summary(df$map_auc)
-# Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
-# 2.0   204.8   319.0   378.0   472.2  2791.0 
-
-
-model = glm(
-  bin_aki48h ~ .,
-  data = df %>% select(
-    map_auc,
-    bin_aki48h,
-    cat_gender,
-    val_creatlst,
-    val_age,
-    val_bmi,
-    bin_htn,
-    bin_diabetes,
-    bin_stroke,
-    bin_ef40,
-    bin_mi,
-    bin_chf,
-    bin_pvd,
-    bin_cld,
-    bin_betablocker,
-    bin_acearb,
-    bin_statin,
-    bin_redo,
-    bin_emergent,
-    val_crystalloid,
-    val_cpbtime,
-    cat_rbc,
-    val_hematocrit
-  ),
-  family = binomial()
-)
-# 
-
-if(!file.exists(here::here("manuscript", "revision", "adjusted_regression_mapauc.csv")) ||
-   force) {
-  model %>%
-    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
-    mutate(p.value = format.pval(p.value, digits = 3)) %>%
-    write_csv(., here::here("manuscript", "revision", "adjusted_regression_mapauc.csv"))
-} 
 
 # exclude individuals in top 1% of procedure time 
 
@@ -295,6 +164,97 @@ if(!file.exists(here::here("manuscript", "revision", "adjusted_regressions_exclu
     write_csv(., here::here("manuscript", "revision", "adjusted_regressions_exclude_long_proc.csv"))
 } 
 
+
+proc_q = quantile(df$hypo_q1, .99); proc_q
+df_small = df %>% 
+  filter(hypo_q1 <= proc_q)
+df %>% nrow() - (df_small %>% nrow())
+
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_small %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    bin_ef40,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent,
+    val_crystalloid,
+    val_cpbtime,
+    cat_rbc,
+    val_hematocrit
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+
+if(!file.exists(here::here("manuscript", "revision", "adjusted_regressions_exclude_1pct.csv")) ||
+   force) {
+  model %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
+    mutate(p.value = format.pval(p.value, digits = 3)) %>%
+    write_csv(., here::here("manuscript", "revision", "adjusted_regressions_exclude_1pct.csv"))
+} 
+
+
+proc_q = quantile(df$hypo_q1, .95); proc_q
+df_small = df %>% 
+  filter(hypo_q1 <= proc_q)
+df %>% nrow() - (df_small %>% nrow())
+
+
+model = glm(
+  bin_aki48h ~ .,
+  data = df_small %>% select(
+    contains("q"),
+    bin_aki48h,
+    cat_gender,
+    val_creatlst,
+    val_age,
+    val_bmi,
+    bin_htn,
+    bin_diabetes,
+    bin_stroke,
+    bin_ef40,
+    bin_mi,
+    bin_chf,
+    bin_pvd,
+    bin_cld,
+    bin_betablocker,
+    bin_acearb,
+    bin_statin,
+    bin_redo,
+    bin_emergent,
+    val_crystalloid,
+    val_cpbtime,
+    cat_rbc,
+    val_hematocrit
+  ) %>% mutate(across(contains("q"), ~ .x / 5)),
+  family = binomial()
+)
+
+
+if(!file.exists(here::here("manuscript", "revision", "adjusted_regressions_exclude_5pct.csv")) ||
+   force) {
+  model %>%
+    broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>%
+    mutate(p.value = format.pval(p.value, digits = 3)) %>%
+    write_csv(., here::here("manuscript", "revision", "adjusted_regressions_exclude_5pct.csv"))
+} 
 ## Nested models 
 
 # Comparing MAP <65 model with all MAP,CI combos and MAP <65
