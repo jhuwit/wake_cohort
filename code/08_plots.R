@@ -1,7 +1,7 @@
 library(here)
 library(ggpubr)
 library(tidyverse)
-library(tidymodels)
+# library(tidymodels)
 library(patchwork)
 library(gt) 
 library(gtsummary)
@@ -335,6 +335,31 @@ p = map_ci %>%
   theme_light(base_size = 20) +
   theme(legend.position = "none")
 
+map_ci %>% 
+  filter(id %in% wake_covars$id) %>% 
+  magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
+                           "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
+  pivot_longer(cols = -id) %>% 
+  separate_wider_delim(name, "_", names = c("map", "ci")) %>% 
+  mutate(map = factor(map, levels = c("hypo", "normo"), labels = c("MAP <65", expression(MAP>=65))),
+         ci = factor(ci, levels = c("q1", "q2", "q3", "q4"), labels = c(
+           "CI <= 2",                       # parsed as math
+           "\"CI (2, 2.4]\"",              # quoted so parse() yields a string literal
+           "\"CI (2.4, 2.8]\"",
+           "\"CI > 2.8\""
+         )),
+         # map = fct_rev(map),
+         ci = fct_rev(ci)) %>% 
+  filter(map == "MAP <65") %>% 
+  ggplot(aes(x = 1, y = value)) + 
+  facet_grid(ci ~ ., switch = "both",labeller = label_parsed) +
+  geom_boxplot(outlier.size = .5, outlier.alpha = .5, outlier.shape=NA, fill ="lightgrey") + 
+  labs(x = "",  y = "Total Minutes in Range Per Participant") + 
+  # scale_y_continuous(breaks=seq(0,360,60), limits=c(0,120), position = "right") + 
+  scale_x_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
+  # scale_color_manual(values = c("#009E73FF","#D55E00FF"),labels = c("<65", ">=65"), name = "Mean Arterial Pressure (mmHg)") +
+  theme_light(base_size = 20) +
+  theme(legend.position = "none")
 png(here::here("manuscript", "figures", "ci_map_min_in_range_v2.png"),
     width = 10, height = 8, units = "in", res = 350)
 p
@@ -416,7 +441,7 @@ result_uni =
           .f = function(x){
             formula <- as.formula(paste("bin_aki48h", "~", x))
             model <- glm(formula, data = df %>% mutate(across(contains("q"), ~.x / 5)), family = binomial)
-            broom::tidy(model, exponentiate = TRUE) %>% slice(2)
+            broom::tidy(model, exponentiate = TRUE, conf.int = TRUE) %>% slice(2)
           })
 
 p = result_uni %>% 
@@ -457,6 +482,30 @@ dev.off()
 png(here::here("manuscript", "final_figures", "univariate_reg_v2.jpg"),
     width = 10, height = 8, units = "in", res = 350)
 p
+dev.off() 
+
+p_ci = 
+  result_uni %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
+        lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
+         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE)) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_),
+         ci = paste0("(", lo, ",", hi,")")) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")")) + 
+  scale_x_discrete(labels = c("<65", expression("">=65))) + 
+  scale_y_discrete(labels = c(expression(""<=2), "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
+  theme_light(base_size = 20) + 
+  theme(panel.grid = element_blank())
+
+png(here::here("manuscript", "figures", "revision/univariate_reg_ci.png"),
+    width = 10, height = 8, units = "in", res = 350)
+p_ci
 dev.off() 
 
 
@@ -534,6 +583,32 @@ png(here::here("manuscript", "final_figures", "adjusted_reg_v2.jpg"),
 p
 dev.off() 
 
+p_ci = model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
+         lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
+         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+         ci = paste0("(", lo, ",", hi,")")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_text(aes(label = paste0("OR = ", est, "\n", ci)), size = 12) + 
+  scale_x_discrete(labels = c("<65", expression("">=65))) + 
+  scale_y_discrete(labels = c(expression(""<=2), "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
+  scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)") + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")")) + 
+  theme_light(base_size = 20) + 
+  theme(panel.grid = element_blank())
+
+p_ci
+
+png(here::here("manuscript", "figures/revision", "adjusted_reg_v2.jpg"),
+    width = 12, height = 8, units = "in", res = 350)
+p_ci
+dev.off() 
 
 scale_fill_manual(values = c("#e51931", "#ca001b","#f37076", "#f37076",  
                                "#55caff", "#0f5fa5" ,"#137fc7", "#55caff"))  
@@ -1042,11 +1117,15 @@ m1 =
 
 p1 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
-         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+         est_sig = if_else(p.value < .05, estimate, NA_real_),
+         est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
+                lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
+                hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+                ci = paste0("(", lo, ",", hi,")")) %>% 
   mutate(name = paste0("Pre-CPB"))
 
 
@@ -1088,15 +1167,19 @@ model = glm(
 )
 m2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE,conf.int = TRUE) %>% 
   mutate(type = "post cpb")
 p2 = 
   model %>% 
-  broom::tidy(exponentiate = TRUE) %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
-         est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
+         est_sig = if_else(p.value < .05, estimate, NA_real_),
+       est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
+                lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
+                hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+                ci = paste0("(", lo, ",", hi,")")) %>% 
   mutate(name = "Post-CPB")
 
 
@@ -1139,6 +1222,26 @@ png(here::here("manuscript", "final_figures", "cpb_reg_v2.jpg"),
 p
 dev.off()
 
+
+p = p1 %>% 
+  bind_rows(p2) %>% 
+  mutate(name = factor(name, levels = c("Pre-CPB", "Post-CPB"))) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")"))  + 
+  facet_grid(.~name) + 
+  theme_light(base_size = 20) + 
+  theme(panel.grid = element_blank()) + 
+  scale_x_discrete(labels = c("<65", expression("">=65))) + 
+  scale_y_discrete(labels = c(expression(""<=2), "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
+  scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)") 
+
+
+png(here::here("manuscript", "figures/revision", "cpb_reg_v2.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p
+dev.off()
 
 ### Tertiles 
 
@@ -1224,6 +1327,32 @@ png(here::here("manuscript", "final_figures", "tertile_reg_v2.jpg"),
 p
 dev.off()
 
+
+p = model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_),
+         est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
+         lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
+         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+         ci = paste0("(", lo, ",", hi,")")) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  scale_x_discrete(labels = c("<65", expression("">=65))) + 
+  scale_y_discrete(labels = c(expression(""<=2.2), "(2.2,2.7]", ">2.7")) + 
+  scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)")  +
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")"))  + 
+  theme_light(base_size = 20) + 
+  theme(panel.grid = element_blank())
+
+
+png(here::here("manuscript", "figures/revision", "tertile_reg_v2.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p
+dev.off()
 
 ### Quintiles 
 
@@ -1321,6 +1450,32 @@ png(here::here("manuscript", "final_figures", "quintile_reg_v2.jpg"),
 p
 dev.off()
 
+
+
+p = model %>% 
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
+  filter(grepl("q", term)) %>% 
+  separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
+  mutate(p = format.pval(p.value, digits = 2),
+         est_sig = if_else(p.value < .05, estimate, NA_real_),
+         est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
+         lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
+         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+         ci = paste0("(", lo, ",", hi,")")) %>% 
+  ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
+  geom_tile(col = "black") + 
+  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")"))  + 
+  scale_x_discrete(labels = c("<65", expression("">=65))) + 
+  scale_y_discrete(labels = c(expression(""<=1.9), "(1.9,2.2]", "(2.2,2.6]", "(2.6,2.9]", ">2.9")) + 
+  scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)")  +
+  theme_light(base_size = 20) + 
+  theme(panel.grid = element_blank())
+
+png(here::here("manuscript", "figures/revision", "quintile_reg_v2.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p
+dev.off()
 
 plot_df = 
   hemo %>% 
