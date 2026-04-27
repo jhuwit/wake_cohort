@@ -46,6 +46,11 @@ mapping_cihigh = read_rds(here::here("data", "analysis", "all_ranges_hici.rds"))
 mapping_cilow = read_rds(here::here("data", "analysis", "all_ranges_lowci.rds"))
 mapping = read_rds(here::here("data", "analysis", "all_ranges.rds"))
 
+# physiological zones 
+pzones = read_rds(here::here("data", "analysis", "pzones.rds"))
+pzones_low = read_rds(here::here("data", "analysis", "pzones_lowci.rds"))
+pzones_hi = read_rds(here::here("data", "analysis", "pzones_hici.rds"))
+
 
 map_order = mapping %>% select(starts_with("map") & !contains("cvp")) %>% colnames
 map_order2 = mapping %>% select(starts_with("map") & !contains("cvp")) %>% colnames %>% 
@@ -769,6 +774,172 @@ tlow %>%
   
 ```
 
+
+#### Physiological Zones
+
+```{r pzones heatmap}
+pzones %>% 
+  pivot_longer(cols = -id) %>% 
+  group_by(name) %>% 
+  summarize(n = n(), 
+            across(value, .fns = list(mean = mean, sd = sd)),
+            .groups = "drop") %>% 
+  mutate(value_se = value_sd / sqrt(n),
+         lb = value_mean - 1.96 * value_se, 
+         ub = value_mean + 1.96 * value_se) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{round(value_mean)} ({round(value_sd)})")) %>% 
+  ggplot(aes(x = map, y = cvp, label = lab)) +
+  geom_tile(color = "black", aes(fill = value_mean), alpha = .9) +
+  theme(legend.position = "none") +
+  scale_fill_paletteer_c("grDevices::YlOrRd", direction = 1) +
+  geom_text() +
+  labs(x = "MAP", y = "CVP", title = "Mean (SD) Minutes in Range")
+
+xhi = 
+  pzones_hi %>% 
+  pivot_longer(cols = -id) %>% 
+  group_by(name) %>% 
+  summarize(n = n(), 
+            across(value, .fns = list(mean = mean, sd = sd)),
+            .groups = "drop") %>% 
+  mutate(value_se = value_sd / sqrt(n),
+         lb = value_mean - 1.96 * value_se, 
+         ub = value_mean + 1.96 * value_se) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{round(value_mean)} ({round(value_sd)})"),
+         type = "high")
+
+xlow = 
+  pzones_low %>% 
+  pivot_longer(cols = -id) %>% 
+  group_by(name) %>% 
+  summarize(n = n(), 
+            across(value, .fns = list(mean = mean, sd = sd)),
+            .groups = "drop") %>% 
+  mutate(value_se = value_sd / sqrt(n),
+         lb = value_mean - 1.96 * value_se, 
+         ub = value_mean + 1.96 * value_se) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{round(value_mean)} ({round(value_sd)})"),
+         type = "low")
+
+xhi %>% 
+  bind_rows(xlow) %>% 
+  mutate(type = factor(type, levels = c("low", "high"), labels = c("CI < 2", "CI >= 2"))) %>% 
+  ggplot(aes(x = map, y = cvp, label = lab)) +
+  geom_tile(color = "black", aes(fill = value_mean), alpha = .9) +
+  theme(legend.position = "none") +
+  scale_fill_paletteer_c("grDevices::YlOrRd", direction = 1) +
+  geom_text() +
+  facet_grid(~type) + 
+  labs(x = "MAP", y = "CVP", title = "Mean (SD) Minutes in Range") 
+
+
+```
+
+```{r pzones heatmap npct}
+pzones %>% 
+  pivot_longer(cols = -id) %>% 
+  group_by(name) %>% 
+  summarize(n = n(), 
+            across(value, ~sum(.x >= 5)),
+            .groups = "drop") %>% 
+  mutate(pct = value / n * 100) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{value} ({round(pct, 0)})")) %>% 
+  ggplot(aes(x = map, y = cvp, label = lab)) +
+  geom_tile(color = "black", aes(fill = value), alpha = .9) +
+  theme(legend.position = "none") +
+  scale_fill_paletteer_c("grDevices::YlOrRd", direction = 1) +
+  geom_text() +
+  labs(x = "MAP", y = "CVP", title = "n (%) Pts with >= 5 Minutes in Range")
+
+xhi = 
+  pzones_hi %>% 
+  pivot_longer(cols = -id) %>% 
+  group_by(name) %>% 
+  summarize(n = n(), 
+            across(value, ~sum(.x >= 5)),
+            .groups = "drop") %>% 
+  mutate(pct = value / n * 100) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{value} ({round(pct, 0)})"),
+         type = "high")
+xlow = 
+  pzones_low %>% 
+  pivot_longer(cols = -id) %>% 
+  group_by(name) %>% 
+  summarize(n = n(), 
+            across(value, ~sum(.x >= 5)),
+            .groups = "drop") %>% 
+  mutate(pct = value / n * 100) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{value} ({round(pct, 0)})"),
+         type = "low")
+
+xhi %>% 
+  bind_rows(xlow) %>% 
+  mutate(type = factor(type, levels = c("low", "high"), labels = c("CI < 2", "CI >= 2"))) %>% 
+  ggplot(aes(x = map, y = cvp, label = lab)) +
+  geom_tile(color = "black", aes(fill = value), alpha = .9) +
+  theme(legend.position = "none") +
+  scale_fill_paletteer_c("grDevices::YlOrRd", direction = 1) +
+  geom_text() +
+  facet_grid(~type) + 
+  labs(x = "MAP", y = "CVP", title = "n (%) Pts with >= 5 Minutes in Range",
+       subtitle = "Stratified by CI")
+
+
+
+xhi = 
+  pzones_hi %>% 
+  pivot_longer(cols = -id) %>% 
+  mutate(aki = if_else(id %in% aki_ids, "AKI: Yes", "AKI: No")) %>% 
+  group_by(name, aki) %>% 
+  summarize(n = n(), 
+            across(value, ~sum(.x >= 5)),
+            .groups = "drop") %>% 
+  mutate(pct = value / n * 100) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{value} ({round(pct, 0)})"),
+         type = "high")
+xlow = 
+  pzones_low %>% 
+  pivot_longer(cols = -id) %>% 
+  mutate(aki = if_else(id %in% aki_ids, "AKI: Yes", "AKI: No")) %>% 
+  group_by(name, aki) %>% 
+  summarize(n = n(), 
+            across(value, ~sum(.x >= 5)),
+            .groups = "drop") %>% 
+  mutate(pct = value / n * 100) %>% 
+  separate_wider_delim(cols = name, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(lab = glue::glue("{value} ({round(pct, 0)})"),
+         type = "low")
+
+xhi %>% 
+  bind_rows(xlow) %>% 
+  mutate(type = factor(type, levels = c("low", "high"), labels = c("CI < 2", "CI >= 2"))) %>% 
+  ggplot(aes(x = map, y = cvp, label = lab)) +
+  geom_tile(color = "black", aes(fill = pct), alpha = .9) +
+  theme(legend.position = "none") +
+  scale_fill_paletteer_c("grDevices::YlOrRd", direction = 1) +
+  geom_text() +
+  facet_grid(aki~type) + 
+  labs(x = "MAP", y = "CVP", title = "n (%) Pts with >= 5 Minutes in Range",
+       subtitle = "Stratified by CI and AKI")
+
+
+```
+
 ### Fine Mapping Analysis {.tabset}
 
 Variables that we will control for are: `r covars_control`
@@ -1400,3 +1571,139 @@ res_lo %>%
   tab_header(title = "Adjusted Zone Regressions, Stratified by CI",
              subtitle = "OR per 5 min in Zone")
 ```
+
+#### Physiological Zones 
+
+```{r bivar pzones}
+temp_df = 
+  pzones
+  
+res_mult = run_regression_biv(temp_df, 
+               covariate_df = df, outcome = "bin_aki48h",
+               covars_control = covars_control)
+
+res_uni = run_regression_biv(temp_df, 
+               covariate_df = df, outcome = "bin_aki48h",
+               covars_control = covars_control, adjustment_type = "uni")
+
+res_uni %>% 
+  separate_wider_delim(term, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(cvp = sub("`.*", "", cvp)) %>% 
+  mutate(sig = case_when(p.value < .01 ~ "***",
+                         p.value < .01 ~ "**",
+                         p.value < .05 ~ "*", 
+                         p.value < .1 ~ ".",
+                         .default = ""),
+         lab = glue::glue("{sprintf('%.2f', estimate)} {sig}")) %>% 
+  ggplot(aes(x = map, y = cvp, fill = estimate, label = lab)) +
+  geom_tile(color = "black") +
+  geom_text() +
+  labs(x = "MAP", y = "CVP", title = "Fine Mapping, Unadjusted Models",
+       subtitle = "OR Associated with 5 min Increase in Time in Range") +
+  scale_fill_gradient2(low = "darkblue", mid = "white", high = "red", midpoint = 1, name = "Odds Ratio (OR)") +
+  theme(legend.position = "none")
+
+res_mult %>% 
+  separate_wider_delim(term, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(cvp = sub("`.*", "", cvp)) %>% 
+  mutate(sig = case_when(p.value < .01 ~ "***",
+                         p.value < .01 ~ "**",
+                         p.value < .05 ~ "*", 
+                         p.value < .1 ~ ".",
+                         .default = ""),
+         lab = glue::glue("{sprintf('%.2f', estimate)} {sig}")) %>% 
+  ggplot(aes(x = map, y = cvp, fill = estimate, label = lab)) +
+  geom_tile(color = "black") +
+  geom_text() +
+  labs(x = "MAP", y = "CVP", title = "Fine Mapping, Adjusted Models",
+       subtitle = "OR Associated with 5 min Increase in Time in Range") +
+  scale_fill_gradient2(low = "darkblue", mid = "white", high = "red", midpoint = 1, name = "Odds Ratio (OR)") +
+  theme(legend.position = "none") 
+
+```
+
+
+```{r bivar strat pzones uni}
+# uniivariate 
+temp_df = 
+  pzones_hi 
+res_mult_hi = run_regression_biv(temp_df, 
+               covariate_df = df, outcome = "bin_aki48h",
+               covars_control = covars_control,
+               adjustment_type = "uni") %>% 
+  mutate(type = "CI >= 2")
+
+temp_df = 
+  pzones_low %>% 
+  select(id, contains("cvp") & contains("map"))
+  
+res_mult_lo = run_regression_biv(temp_df, 
+               covariate_df = df, outcome = "bin_aki48h",
+               covars_control = covars_control,
+               adjustment_type = "uni") %>% 
+  mutate(type = "CI < 2")
+
+res_mult_hi %>% 
+  bind_rows(res_mult_lo) %>% 
+  separate_wider_delim(term, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(cvp = sub("`.*", "", cvp),
+         # estimate = if_else(estimate > 10, NA, estimate),
+         sig = case_when(p.value < .01 ~ "***",
+                         p.value < .01 ~ "**",
+                         p.value < .05 ~ "*", 
+                         p.value < .1 ~ ".",
+                         .default = ""),
+         lab = glue::glue("{sprintf('%.2f', estimate)} {sig}")) %>% 
+  ggplot(aes(x = map, y = cvp, fill = estimate, label = lab)) +
+  geom_tile(color = "black") +
+  geom_text() +
+  labs(x = "MAP", y = "CVP", title = "Fine Mapping, Unadjusted Models, Stratified",
+       subtitle = "OR Associated with 5 min Increase in Time in Range") +
+  scale_fill_gradient2(low = "darkblue", mid = "white", high = "red", midpoint = 1, name = "Odds Ratio (OR)") +
+  theme(legend.position = "none") +
+  facet_grid(type ~ .)
+```
+
+
+
+```{r bivar strat pzones multi}
+# multivariate 
+temp_df = 
+  pzones_hi 
+res_hi = run_regression_biv(temp_df, 
+               covariate_df = df, outcome = "bin_aki48h",
+               covars_control = covars_control) %>% 
+  mutate(type = "CI >= 2")
+
+temp_df = 
+  pzones_low 
+
+res_lo = run_regression_biv(temp_df, 
+               covariate_df = df, outcome = "bin_aki48h",
+               covars_control = covars_control) %>% 
+  mutate(type = "CI < 2")
+
+res_hi %>% 
+  bind_rows(res_lo) %>% 
+  separate_wider_delim(term, delim = "_",
+                       names = c("x", "map", "x2", "cvp")) %>% 
+  mutate(cvp = sub("`.*", "", cvp),
+         sig = case_when(p.value < .01 ~ "***",
+                         p.value < .01 ~ "**",
+                         p.value < .05 ~ "*", 
+                         p.value < .1 ~ ".",
+                         .default = ""),
+         lab = glue::glue("{sprintf('%.2f', estimate)} {sig}")) %>% 
+  ggplot(aes(x = map, y = cvp, fill = estimate, label = lab)) +
+  geom_tile(color = "black") +
+  geom_text() +
+  labs(x = "MAP", y = "CVP", title = "Fine Mapping, Adjusted Models, Stratified",
+       subtitle = "OR Associated with 5 min Increase in Time in Range") +
+  scale_fill_gradient2(low = "darkblue", mid = "white", high = "red", midpoint = 1, name = "Odds Ratio (OR)") +
+  theme(legend.position = "none") +
+  facet_grid(type ~ .)
+```
+

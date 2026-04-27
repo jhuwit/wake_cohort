@@ -362,5 +362,33 @@ write_rds(all_data_hi, here::here("data", "analysis", "all_ranges_hici.rds"))
 
 
 
+### new physiology based zones 
+map_cvp = 
+  get_ranges2(hemo_data %>% filter(cat_cpb != "intra"),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp",
+              r = FALSE)
 
+write_rds(map_cvp, here::here("data", "analysis", "pzones.rds"))
 
+map_cvp_cilow = 
+  get_ranges2(hemo_data %>% filter(cat_cpb != "intra", val_ci < 2),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp", 
+              r = FALSE)
+
+write_rds(map_cvp_cilow, here::here("data", "analysis", "pzones_lowci.rds"))
+
+map_cvp_cihi = 
+  get_ranges2(hemo_data %>% filter(cat_cpb != "intra", val_ci >= 2),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp", 
+              r = FALSE)
+
+write_rds(map_cvp_cihi, here::here("data", "analysis", "pzones_hici.rds"))

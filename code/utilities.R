@@ -128,12 +128,13 @@ get_ranges_cpb = function(hemo_data, thresholds, hemo_variable) {
 
 get_ranges2 = function(hemo_data,
                           thresh1, var1,
-                          thresh2, var2) {
+                          thresh2, var2,
+                       r = TRUE) {
   
   hemo_data %>%
     mutate(
-      across({{var1}}, ~cut(.x, breaks = thresh1, include.lowest = TRUE), .names = "v1"),
-      across({{var2}}, ~cut(.x, breaks = thresh2, include.lowest = TRUE), .names = "v2")) %>% 
+      across({{var1}}, ~cut(.x, breaks = thresh1, include.lowest = TRUE, right = r), .names = "v1"),
+      across({{var2}}, ~cut(.x, breaks = thresh2, include.lowest = TRUE, right = r), .names = "v2")) %>% 
     group_by(id) %>% 
     count(v1, v2, .drop = FALSE) %>% 
     drop_na() %>%
@@ -145,6 +146,8 @@ get_ranges2 = function(hemo_data,
                 id_cols = id) %>%
     ungroup()
 }
+
+
 
 # function to perform regressions with output of get_ranges and covariate dataframe 
 # inputs: 
