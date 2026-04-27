@@ -14,7 +14,7 @@ col1 = "#F06719FF"; col2 = "#1BA3C6FF"
 # "#D55E00FF"
 
 col1a = "#7873C0FF"; col2a = "#21B087FF"; col3 = "#F06719FF";col4 = "#1BA3C6FF"; col5 = "#F64971FF"; col6= "#F8B620FF"
-source(here::here("code", "utilities.R"))
+# source(here::here("code", "utilities.R"))
 paletteer::paletteer_d("ggthemes::colorblind")
 covars = read_rds(here::here("data", "processed", "covars_proc.rds"))
 map_ci = read_rds(here::here("data", "analysis", "mapci_ranges.rds"))
@@ -230,6 +230,7 @@ png(here::here("manuscript", "figures", "n_pct_range_v2.png"),
 p
 dev.off()
 
+### FIGURE 1B ### 
 png(here::here("manuscript", "final_figures", "n_pct_range_v2.jpg"),
     width = 10, height = 8, units = "in", res = 350)
 p
@@ -252,6 +253,23 @@ p =
   scale_x_discrete(labels = c(expression(""<=2), "(2,2.4]", "(2.4,2.8]", ">2.8"))
   
 
+p2 = 
+  ci_ranges4 %>% 
+  filter(id %in% wake_covars$id) %>% 
+  pivot_longer(cols = contains("ci")) %>% 
+  mutate(name = sub(".*ci\\_", "", name),
+         name = factor(name, levels = c("[0,2]", "(2,2.4]", "(2.4,2.8]", "(2.8,Inf]"),
+                       labels = c("<=2", "(2, 2.4]", "(2.4, 2.8]", ">2.8"))) %>% 
+  ggplot(aes(x = name, y = value)) + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(alpha = .3, size = .4, width = .1, color = "#0072B2FF") +
+  labs(y = "Total Minutes in Range", x = expression("Quartile of Cardiac Index (L/min/" * m^2 * ")")) + 
+  scale_y_continuous(breaks=seq(0, 80, 20), limits = c(0, 80)) + 
+  theme_light(base_size = 20) + 
+  theme(legend.position = "none") + 
+  scale_x_discrete(labels = c(expression(""<=2), "(2,2.4]", "(2.4,2.8]", ">2.8"))
+
+
 png(here::here("manuscript", "figures", "ci_quartiles_v2.png"),
     width = 10, height = 8, units = "in", res = 350)
 p
@@ -261,6 +279,12 @@ dev.off()
 png(here::here("manuscript", "final_figures", "ci_quartiles_v2.jpg"),
     width = 10, height = 8, units = "in", res = 350)
 p
+dev.off() 
+
+
+png(here::here("manuscript", "figures/revision", "ci_quartiles.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p2
 dev.off() 
 
 p = hemo %>% 
@@ -323,49 +347,37 @@ p = map_ci %>%
            "\"CI (2.4, 2.8]\"",
            "\"CI > 2.8\""
          )),
-         # map = fct_rev(map),
          ci = fct_rev(ci)) %>% 
+  group_by(map, ci) %>% 
+  mutate(outlier_lwr = value < quantile(value, probs = 0.25) - IQR(value) * 1.5,
+        outlier_upr = value > quantile(value, probs = 0.75) + IQR(value) * 1.5) %>% 
+  ungroup() %>% 
   ggplot(aes(x = 1, y = value)) + 
   facet_grid(ci ~ map, switch = "both",labeller = label_parsed) + 
-  geom_boxplot(outlier.size = .5, outlier.alpha = .5, fill ="lightgrey") + 
+  # geom_boxplot(outlier.size = .5, outlier.alpha = .5, fill ="lightgrey") + 
+  geom_boxplot(outlier.shape = NA) + 
+  geom_jitter(data = function(x) subset(x, outlier_lwr | outlier_upr), 
+             size= 0.25, alpha = 0.5, width = 0.15) +
   labs(x = "",  y = "Total Minutes in Range Per Participant") + 
-  scale_y_continuous(breaks=seq(0,360,60), limits=c(0,120), position = "right") + 
+  scale_y_continuous(breaks=seq(0,80,20), limits=c(0,80), position = "right") + 
   scale_x_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
-  # scale_color_manual(values = c("#009E73FF","#D55E00FF"),labels = c("<65", ">=65"), name = "Mean Arterial Pressure (mmHg)") +
   theme_light(base_size = 20) +
   theme(legend.position = "none")
 
-map_ci %>% 
-  filter(id %in% wake_covars$id) %>% 
-  magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
-                           "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
-  pivot_longer(cols = -id) %>% 
-  separate_wider_delim(name, "_", names = c("map", "ci")) %>% 
-  mutate(map = factor(map, levels = c("hypo", "normo"), labels = c("MAP <65", expression(MAP>=65))),
-         ci = factor(ci, levels = c("q1", "q2", "q3", "q4"), labels = c(
-           "CI <= 2",                       # parsed as math
-           "\"CI (2, 2.4]\"",              # quoted so parse() yields a string literal
-           "\"CI (2.4, 2.8]\"",
-           "\"CI > 2.8\""
-         )),
-         # map = fct_rev(map),
-         ci = fct_rev(ci)) %>% 
-  filter(map == "MAP <65") %>% 
-  ggplot(aes(x = 1, y = value)) + 
-  facet_grid(ci ~ ., switch = "both",labeller = label_parsed) +
-  geom_boxplot(outlier.size = .5, outlier.alpha = .5, outlier.shape=NA, fill ="lightgrey") + 
-  labs(x = "",  y = "Total Minutes in Range Per Participant") + 
-  # scale_y_continuous(breaks=seq(0,360,60), limits=c(0,120), position = "right") + 
-  scale_x_discrete(labels = c("<=2", "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
-  # scale_color_manual(values = c("#009E73FF","#D55E00FF"),labels = c("<65", ">=65"), name = "Mean Arterial Pressure (mmHg)") +
-  theme_light(base_size = 20) +
-  theme(legend.position = "none")
+
+
 png(here::here("manuscript", "figures", "ci_map_min_in_range_v2.png"),
     width = 10, height = 8, units = "in", res = 350)
 p
 dev.off() 
 
 png(here::here("manuscript", "final_figures", "ci_map_min_in_range_v2.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p
+dev.off() 
+
+## FIGURE 1A ### 
+png(here::here("manuscript", "figures/revision", "ci_map_min_in_range_v2.jpg"),
     width = 10, height = 8, units = "in", res = 350)
 p
 dev.off() 
@@ -403,12 +415,19 @@ p=map_ci_cpb %>%
            "\"CI > 2.8\""
          )),
          ci = fct_rev(ci)) %>% 
+  group_by(map, ci, cat_cpb) %>% 
+  mutate(outlier_lwr = value < quantile(value, probs = 0.25) - IQR(value) * 1.5,
+         outlier_upr = value > quantile(value, probs = 0.75) + IQR(value) * 1.5) %>% 
+  ungroup() %>% 
   ggplot(aes(x = cat_cpb, y = value)) + 
   facet_grid(ci ~ map, switch = "both", labeller = label_parsed) + 
-  geom_boxplot(outlier.size = .5,fill = "lightgrey", outlier.alpha = .5, aes(outlier.color = cat_cpb)) + 
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(data = function(x) subset(x, outlier_lwr | outlier_upr), 
+              size= 0.25, alpha = 0.5, width = 0.1) +
+  # geom_boxplot(outlier.size = .5,fill = "lightgrey", outlier.alpha = .5, aes(outlier.color = cat_cpb)) + 
   labs( x = "",
         y = "Total Minutes in Range Per Participant") + 
-  scale_y_continuous(breaks=seq(0,360,60), limits = c(0,120), position = "right") +
+  scale_y_continuous(breaks=seq(0,60,20), limits = c(0,60), position = "right") +
   scale_x_discrete(position = "top") +
   # scale_fill_manual(values = c("#009E73FF","#D55E00FF"), name = "CPB Phase") + 
   theme_light(base_size = 20) + 
@@ -427,7 +446,13 @@ png(here::here("manuscript", "final_figures", "ci_map_min_in_range_cpb_v2.jpg"),
 p
 dev.off() 
 
+### FIGURE 3A ### 
   
+png(here::here("manuscript", "figures/revision", "ci_map_min_in_range_cpb_v2.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p
+dev.off() 
+
 
 df = 
   map_ci %>% 
@@ -462,10 +487,11 @@ p = result_uni %>%
 p = result_uni %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
+         ci = paste0("(", sprintf("%.2f", conf.low), ",", sprintf("%.2f", conf.high), ")"),
          est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
   ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
   geom_tile(col = "black") + 
-  geom_label(aes(label = paste0("OR = ", round(estimate, 3), "\np=", p))) + 
+  geom_text(aes(label = paste0("OR = ", sprintf("%.2f", estimate), "\n", ci))) + 
   scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)") + 
   labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")")) + 
   scale_x_discrete(labels = c("<65", expression("">=65))) + 
@@ -484,18 +510,23 @@ png(here::here("manuscript", "final_figures", "univariate_reg_v2.jpg"),
 p
 dev.off() 
 
+png(here::here("manuscript", "figures/revision", "univariate_reg_v2.jpg"),
+    width = 10, height = 8, units = "in", res = 350)
+p
+dev.off() 
+
 p_ci = 
   result_uni %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
-  mutate(est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
-        lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
-         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE)) %>% 
+  mutate(est = format(signif(estimate, 2), scientific = FALSE, trim = TRUE), 
+        lo = format(signif(conf.low, 2), scientific = FALSE, trim = TRUE),
+         hi = format(signif(conf.high, 2), scientific = FALSE, trim = TRUE)) %>% 
   mutate(p = format.pval(p.value, digits = 2),
          est_sig = if_else(p.value < .05, estimate, NA_real_),
          ci = paste0("(", lo, ",", hi,")")) %>% 
   ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
   geom_tile(col = "black") + 
-  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  geom_text(aes(label = paste0("OR = ", est, "\n", ci))) + 
   scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)") + 
   labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")")) + 
   scale_x_discrete(labels = c("<65", expression("">=65))) + 
@@ -587,9 +618,9 @@ p_ci = model %>%
   broom::tidy(exponentiate = TRUE, conf.int = TRUE) %>% 
   filter(grepl("q", term)) %>% 
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
-  mutate(est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
-         lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
-         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+  mutate(est = sprintf("%.2f", estimate),
+         lo = sprintf("%.2f", conf.low),
+         hi = sprintf("%.2f", conf.high),
          ci = paste0("(", lo, ",", hi,")")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
          est_sig = if_else(p.value < .05, estimate, NA_real_)) %>% 
@@ -605,6 +636,7 @@ p_ci = model %>%
 
 p_ci
 
+### FIGURE 2 ### 
 png(here::here("manuscript", "figures/revision", "adjusted_reg_v2.jpg"),
     width = 12, height = 8, units = "in", res = 350)
 p_ci
@@ -1058,7 +1090,7 @@ p = fplot_df %>%
                                 "eGFR < 60", expression(eGFR>=60), "",
                                 "Anemic", "Not Anemic", "",
                                 "History of hypertension", "No history of hypertension")) 
-
+### FIGURE 4 ### 
 png(here::here("manuscript", "figures", "revision/forest_plot.png"),
     width = 10, height = 8, units = "in", res = 350)
 p
@@ -1225,10 +1257,12 @@ dev.off()
 
 p = p1 %>% 
   bind_rows(p2) %>% 
+  mutate(ci2 = paste0("(", sprintf("%.2f", conf.low), ",", sprintf("%.2f", conf.high), ")"),
+         est = sprintf("%.2f", estimate)) %>% 
   mutate(name = factor(name, levels = c("Pre-CPB", "Post-CPB"))) %>% 
   ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
   geom_tile(col = "black") + 
-  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  geom_text(aes(label = paste0("OR = ", est, "\n", ci2))) + 
   labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")"))  + 
   facet_grid(.~name) + 
   theme_light(base_size = 20) + 
@@ -1237,7 +1271,7 @@ p = p1 %>%
   scale_y_discrete(labels = c(expression(""<=2), "(2,2.4]", "(2.4,2.8]", ">2.8")) + 
   scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)") 
 
-
+### FIGURE 3B ### 
 png(here::here("manuscript", "figures/revision", "cpb_reg_v2.jpg"),
     width = 10, height = 8, units = "in", res = 350)
 p
@@ -1334,13 +1368,13 @@ p = model %>%
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
          est_sig = if_else(p.value < .05, estimate, NA_real_),
-         est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
-         lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
-         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+         est = sprintf("%.2f", estimate),
+         lo = sprintf("%.2f", conf.low),
+         hi = sprintf("%.2f", conf.high),
          ci = paste0("(", lo, ",", hi,")")) %>% 
   ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
   geom_tile(col = "black") + 
-  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  geom_text(aes(label = paste0("OR = ", est, "\n", ci))) + 
   scale_x_discrete(labels = c("<65", expression("">=65))) + 
   scale_y_discrete(labels = c(expression(""<=2.2), "(2.2,2.7]", ">2.7")) + 
   scale_fill_gradient2(low = "#0f5fa5", mid = "white", high = "#ca001b", midpoint = 1, name = "Odds Ratio (OR)")  +
@@ -1458,13 +1492,13 @@ p = model %>%
   separate_wider_delim(term, "_", names = c("MAP", "CI")) %>% 
   mutate(p = format.pval(p.value, digits = 2),
          est_sig = if_else(p.value < .05, estimate, NA_real_),
-         est = format(signif(estimate, 3), scientific = FALSE, trim = TRUE), 
-         lo = format(signif(conf.low, 3), scientific = FALSE, trim = TRUE),
-         hi = format(signif(conf.high, 3), scientific = FALSE, trim = TRUE),
+         est = sprintf("%.2f", estimate),
+         lo = sprintf("%.2f", conf.low),
+         hi = sprintf("%.2f", conf.high),
          ci = paste0("(", lo, ",", hi,")")) %>% 
   ggplot(aes(x = MAP, y = CI, fill = estimate)) + 
   geom_tile(col = "black") + 
-  geom_label(aes(label = paste0("OR = ", est, "\n", ci))) + 
+  geom_text(aes(label = paste0("OR = ", est, "\n", ci))) + 
   labs(x = "Mean Arterial Pressure  (mmHg)", y = expression("Cardiac Index (L/min/" * m^2 * ")"))  + 
   scale_x_discrete(labels = c("<65", expression("">=65))) + 
   scale_y_discrete(labels = c(expression(""<=1.9), "(1.9,2.2]", "(2.2,2.6]", "(2.6,2.9]", ">2.9")) + 

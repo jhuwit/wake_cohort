@@ -10,10 +10,10 @@ library(slider)
 library(furrr)
 library(future)
 library(patchwork)
-library(fuzzyjoin)
+# library(fuzzyjoin)
 options(digits.secs = 2)
 force = TRUE
-source(here::here("code", "utilities.R"))
+# source(here::here("code", "utilities.R"))
 
 covars = read_rds(here::here("data", "processed", "covars_proc.rds"))
 
@@ -36,9 +36,9 @@ covars_updated =
   left_join(los, by = "id") %>% 
   mutate(increase = max_of_cr / val_creatlst,
          change = max_of_cr - val_creatlst,
-         bin_aki7d = if_else(increase >= 1.5, 1, 0),
+         bin_aki7d = if_else(increase >= 1.5 | bin_aki == 1, 1, 0),
          aki_stage = case_when(bin_aki == 0 & bin_aki7d == 0 ~ 0,
-                           increase >= 3 | max_of_cr >= 4 & change >= 0.5 ~ 3,
+                           increase >= 3 | max_of_cr >= 4 ~ 3,
                            increase >= 2 & increase < 3 ~ 2,
                            .default = 1))
 

@@ -2,7 +2,7 @@
 library(here)
 library(ggpubr)
 library(tidyverse)
-library(tidymodels)
+# library(tidymodels)
 library(patchwork)
 library(gt) 
 library(gtsummary)
@@ -53,6 +53,11 @@ wake_covars =
   wake_covars %>% 
   drop_na()
 
+meds = read_csv(here::here("data", "processed", "vasopressor-inotrope-dose.csv")) %>% 
+  mutate(ID = as.character(ID))
+
+wake_covars = wake_covars %>% left_join(meds %>% select(ID, val_vis = total),
+                              by  = c("id" = "ID"))
 map_ci = map_ci %>% 
   filter(id %in% wake_covars$id) 
 
@@ -171,16 +176,34 @@ missing = hemo %>%
 
 ## By AKI
 
+# test for normality 
+
+vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort))
+normal = map_dfr(.x = vars,
+    .f = function(v){
+      if(is.numeric(wake_covars %>% pull({{v}}))){
+        res = wake_covars %>% pull({{v}}) %>% shapiro.test 
+        return(tibble(p = res$p.value, var = v))
+      }
+    })
+normal %>% filter(p > .05)
 t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_predmort, -cohort)),
                              strata = "bin_aki48h",
                              factorVars =  colnames(wake_covars %>% select(starts_with("bin"))),
                              data = wake_covars)
 
 t 
-t = print(t)
+# t = print(t)
 if (!file.exists(here::here("manuscript", "table_one.csv")) || force){
   write.csv(t, here::here("manuscript", "table_one.csv"))
 }
+
+t = print(t, nonnormal = colnames(wake_covars %>% select(starts_with("val"))), smd = TRUE)
+
+if (!file.exists(here::here("manuscript", "table_one_iqr_smd.csv")) || force){
+  write.csv(t, here::here("manuscript", "table_one_iqr_smd.csv"))
+}
+
 
 
 ci_tertiles = 
@@ -205,6 +228,7 @@ t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_p
 t 
 t = print(t)
 if(!file.exists(here::here("manuscript", "ci_tertile_table.csv")) || force) write.csv(t, here::here("manuscript", "ci_tertile_table.csv"))
+write.csv(t, here::here("manuscript","revision", "ci_tertile_table.csv"))
 
 
 ### Time with MAP < 65
@@ -249,7 +273,7 @@ t = tableone::CreateTableOne(vars = colnames(wake_covars %>% select(-id, -euro_p
 t
 t = print(t)
 if(!file.exists(here::here("manuscript", "map_tertile_table.csv")) || force) write.csv(t, here::here("manuscript", "map_tertile_table.csv"))
-
+write.csv(t, here::here("manuscript", "revision", "map_tertile_table.csv"))
 
 
 map_65_ci2 = 
