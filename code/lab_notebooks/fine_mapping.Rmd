@@ -17,6 +17,7 @@ library(here)
 library(tidyverse)
 library(patchwork)
 library(stargazer)
+library(ggcorrplot)
 library(gt) 
 library(gtsummary)
 library(viridis)
@@ -39,7 +40,8 @@ df =
   magrittr::set_colnames(c("id", "hypo_q1", "hypo_q2", "hypo_q3", "hypo_q4",
                            "normo_q1", "normo_q2", "normo_q3", "normo_q4")) %>% 
   left_join(wake_covars) %>% 
-  select(-contains("hypo"), -contains("normo"))
+  select(-contains("hypo"), -contains("normo")) %>% 
+  left_join(meds %>% rename(vis_score = total, id = ID))
 
 
 mapping_cihigh = read_rds(here::here("data", "analysis", "all_ranges_hici.rds"))
@@ -84,9 +86,12 @@ covars_control = df %>%
     val_crystalloid,
     val_cpbtime,
     cat_rbc,
-    val_hematocrit) %>% colnames()
+    val_hematocrit,
+    vis_score) %>% colnames()
 
 aki_ids = df %>% filter(bin_aki48h == 1) %>% pull(id)
+
+# read in 
 ```
 
 **For all of the below analysis, I am excluding intra-CPB** 
@@ -100,6 +105,107 @@ tableone::CreateTableOne(data = df,
 
 ```
 
+### Hemodynamics EDA 
+
+Median CVP measurement is ~12, Q1 and Q3 are 8 and 15, respectively 
+
+```{r dists}
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  ggplot(aes(x = val_cvp)) +
+  geom_histogram(binwidth = 1, color = "black", fill = col2a) +
+  labs(x = "CVP", y = "Count of Measurements") +
+  scale_x_continuous(breaks = seq(0, 26, 2))
+
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  ggplot(aes(x = val_cvp)) +
+  geom_boxplot() +
+  labs(x = "CVP", y = "") +
+  scale_x_continuous(breaks = seq(0, 26, 2)) +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  ggplot(aes(x = val_map)) +
+  geom_histogram(binwidth = 5, color = "black", fill = col2a) +
+  labs(x = "MAP", y = "Count of Measurements") +
+  scale_x_continuous(breaks=seq(0,250,25))
+
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  ggplot(aes(x = val_map)) +
+  geom_boxplot() +
+  labs(x = "MAP", y = "") +
+  scale_x_continuous(breaks=seq(0,250,25)) +
+   theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  ggplot(aes(x = val_ci)) +
+  geom_histogram(binwidth = .5, color = "black", fill = col2a) +
+  labs(x = "CI", y = "Count of Measurements") +
+  scale_x_continuous(breaks=seq(0, 20, .5))
+
+hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+  ggplot(aes(x = val_ci)) +
+  geom_boxplot() +
+  labs(x = "CI", y = "") +
+  scale_x_continuous(breaks=seq(0, 20, .5)) +
+   theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+#### Comparison with JHU cohort 2016-2019 
+
+```{r compare to jhu}
+jhu_data = read_rds(here::here("..", "fine_mapping",
+                               "data", "analytic", 
+                               "hemo_timeseries_interp_post_exclusion.rds")) %>% 
+  filter(cat_cpb != "intra" & cat_anes == "intra") %>% 
+  janitor::clean_names()
+
+joined = 
+  jhu_data %>% 
+  mutate(cohort = "jhu") %>% 
+  bind_rows(hemo %>% 
+  filter(cat_cpb != "intra") %>% 
+    mutate(cohort = "wake")) 
+
+joined %>% 
+  ggplot(aes(x = val_cvp)) +
+  geom_histogram(binwidth = 1, color = "black") +
+  facet_grid(cohort ~ ., scales = "free_y") +
+  labs(x = "CVP", y = "Count of measurements") +
+  scale_x_continuous(breaks = seq(0, 26, 2))
+
+joined %>% 
+  ggplot(aes(x = cohort, y = val_cvp)) +
+  geom_boxplot() +
+  labs(x = "Cohort", y = "CVP") +
+  scale_y_continuous(breaks = seq(0, 26, 2))
+
+```
+
+
+```{r compare to jhu map}
+
+joined %>% 
+  ggplot(aes(x = val_map)) +
+  geom_histogram(binwidth = 5, color = "black") +
+  facet_grid(cohort ~ ., scales = "free_y") +
+  labs(x = "MAP", y = "Count of measurements") 
+  # scale_x_continuous(breaks = seq(0, 26, 2))
+
+joined %>% 
+  ggplot(aes(x = cohort, y = val_map)) +
+  geom_boxplot(outlier.alpha = .05, outlier.size = .4) +
+  labs(x = "Cohort", y = "MAP") +
+  scale_y_continuous(breaks=seq(25, 250, 25))
+```
 
 ### Amount of Data in Ranges {.tabset}
 
@@ -944,6 +1050,8 @@ xhi %>%
 
 Variables that we will control for are: `r covars_control`
 
+In this section, we are just modeling one zone at a time, with or without covariates.
+
 Significance label key
 
 | p-value | label |
@@ -1705,5 +1813,353 @@ res_hi %>%
   scale_fill_gradient2(low = "darkblue", mid = "white", high = "red", midpoint = 1, name = "Odds Ratio (OR)") +
   theme(legend.position = "none") +
   facet_grid(type ~ .)
+```
+
+
+
+### Fine Mapping Analysis - All Zones at Once {.tabset}
+
+
+#### Zones (5) 
+
+```{r zones correlation}
+temp_df = 
+  mapping %>% 
+  select(id, contains("shell")) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+p1 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "Unstratified",
+           p.mat = p_mat,
+           lab_size = 3) 
+
+temp_df = 
+  mapping_cihigh %>% 
+  select(id, contains("shell")) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+
+p2 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI >= 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+temp_df = 
+  mapping_cilow %>% 
+  select(id, contains("shell")) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+  
+p3 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI < 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+
+p1 + p3 + p2 + plot_layout(guides = "collect") + plot_annotation(title = "Pearson Correlations",
+                                                                 caption = "X denotes p > .05")
+```
+
+```{r zones reg all}
+temp_df = 
+  mapping %>% 
+  select(id, contains("shell")) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>% 
+  select(-id)
+
+model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+# model %>% 
+#   tbl_regression()
+#   broom::tidy(exponentiate = TRUE) %>% 
+#   gt()
+
+  
+temp_df = 
+  mapping_cilow %>% 
+  select(id, contains("shell")) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>% 
+  select(-id)
+
+model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+temp_df = 
+  mapping_cihigh %>% 
+  select(id, contains("shell")) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>% 
+  select(-id)
+
+model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+stargazer(model, model_lo, model_hi,
+          column.labels=c("Overall","CI <2", "CI >= 2"), align=TRUE,
+         type = "text")
+
+
+```
+
+```{r vif, eval = FALSE}
+car::vif(model)
+car::vif(model_lo)
+car::vif(model_hi)
+```
+
+#### Zones (3) 
+
+```{r zones 3 correlation}
+temp_df = 
+  mapping %>% 
+  select(id, contains("zone"))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+p1 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "Unstratified",
+           p.mat = p_mat,
+           lab_size = 3) 
+
+temp_df = 
+  mapping_cihigh %>% 
+  select(id, contains("zone"))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+
+p2 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI >= 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+temp_df = 
+  mapping_cilow %>% 
+  select(id, contains("zone"))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+  
+p3 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI < 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+
+p1 + p3 + p2 + plot_layout(guides = "collect") + plot_annotation(title = "Pearson Correlations",
+                                                                 caption = "X denotes p > .05")
+```
+
+```{r zones 3 reg all}
+temp_df = 
+  mapping %>% 
+  select(id, contains("zone")) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+  
+temp_df = 
+  mapping_cilow %>% 
+  select(id, contains("zone")) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+temp_df = 
+  mapping_cihigh %>% 
+  select(id, contains("zone")) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+stargazer(model, model_lo, model_hi,
+          column.labels=c("Overall","CI <2", "CI >= 2"), align=TRUE,
+         type = "text")
+
+
+```
+
+```{r vif2, eval = FALSE}
+car::vif(model)
+car::vif(model_lo)
+car::vif(model_hi)
+```
+
+#### Physiological Zones
+
+```{r pzones 3 correlation}
+temp_df = 
+  pzones %>% 
+  magrittr::set_colnames(c("id", "lo map lo cvp", "lo map hi cvp", "hi map lo cvp", "hi map hi cvp"))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+p1 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "Unstratified",
+           p.mat = p_mat,
+           lab_size = 3) 
+
+temp_df = 
+  pzones_hi %>% 
+  magrittr::set_colnames(c("id", "lo map lo cvp", "lo map hi cvp", "hi map lo cvp", "hi map hi cvp"))
+
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+
+p2 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI >= 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+temp_df = 
+  pzones_low %>% 
+  magrittr::set_colnames(c("id", "lo map lo cvp", "lo map hi cvp", "hi map lo cvp", "hi map hi cvp"))
+
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+  
+p3 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI < 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+
+p1 + p3 + p2 + plot_layout(guides = "collect") + plot_annotation(title = "Pearson Correlations",
+                                                                 caption = "X denotes p > .05")
+```
+
+```{r pzones reg all}
+temp_df = 
+  pzones %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+  
+temp_df = 
+  pzones_low %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+temp_df = 
+  pzones_hi %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+stargazer(model, model_lo, model_hi,
+          column.labels=c("Overall", "CI <2", "CI >= 2"), align=TRUE)
+         
+
+
+```
+
+```{r vif3, eval = FALSE}
+car::vif(model)
+car::vif(model_lo)
+car::vif(model_hi)
 ```
 
