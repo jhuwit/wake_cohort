@@ -392,3 +392,66 @@ map_cvp_cihi =
               r = FALSE)
 
 write_rds(map_cvp_cihi, here::here("data", "analysis", "pzones_hici.rds"))
+
+map_cvp_pre = 
+  get_ranges2(hemo_data %>% filter(cat_cpb == "pre"),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp",
+              r = FALSE)
+
+map_cvp_post = 
+  get_ranges2(hemo_data %>% filter(cat_cpb == "post"),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp",
+              r = FALSE)
+
+map_cvp = map_cvp_pre %>% mutate(cat_cpb = "pre") %>% 
+  bind_rows(map_cvp_post %>% mutate(cat_cpb = "post"))
+
+write_rds(map_cvp, here::here("data", "analysis", "pzones_cpb.rds"))
+
+map_cvp_cilow_pre = 
+  get_ranges2(hemo_data %>% filter(cat_cpb =="pre", val_ci < 2),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp", 
+              r = FALSE) 
+
+map_cvp_cilow_post = 
+  get_ranges2(hemo_data %>% filter(cat_cpb =="post", val_ci < 2),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp", 
+              r = FALSE) 
+map_cvp_cilow = map_cvp_cilow_pre %>% mutate(cat_cpb = "pre") %>% 
+  bind_rows(map_cvp_cilow_post %>% mutate(cat_cpb = "post"))
+
+
+write_rds(map_cvp_cilow, here::here("data", "analysis", "pzones_lowci_cpb.rds"))
+
+map_cvp_cihi_pre = 
+  get_ranges2(hemo_data %>% filter(cat_cpb =="pre", val_ci >= 2),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp", 
+              r = FALSE) 
+
+map_cvp_cihi_post = 
+  get_ranges2(hemo_data %>% filter(cat_cpb =="post", val_ci >= 2),
+              thresh1 = c(0, 65, Inf),
+              var1 = "val_map",
+              thresh2 = c(0, 10, 20),
+              var2 = "val_cvp", 
+              r = FALSE) 
+map_cvp_cihi = map_cvp_cihi_pre %>% mutate(cat_cpb = "pre") %>% 
+  bind_rows(map_cvp_cihi_post %>% mutate(cat_cpb = "post"))
+
+
+write_rds(map_cvp_cihi, here::here("data", "analysis", "pzones_hici_cpb.rds"))

@@ -53,6 +53,10 @@ pzones = read_rds(here::here("data", "analysis", "pzones.rds"))
 pzones_low = read_rds(here::here("data", "analysis", "pzones_lowci.rds"))
 pzones_hi = read_rds(here::here("data", "analysis", "pzones_hici.rds"))
 
+pzones_cpb = read_rds(here::here("data", "analysis", "pzones_cpb.rds"))
+pzones_low_cpb = read_rds(here::here("data", "analysis", "pzones_lowci_cpb.rds"))
+pzones_hi_cpb = read_rds(here::here("data", "analysis", "pzones_hici_cpb.rds"))
+
 
 map_order = mapping %>% select(starts_with("map") & !contains("cvp")) %>% colnames
 map_order2 = mapping %>% select(starts_with("map") & !contains("cvp")) %>% colnames %>% 
@@ -1819,6 +1823,7 @@ res_hi %>%
 
 ### Fine Mapping Analysis - All Zones at Once {.tabset}
 
+Model coefficients below are odds ratios per 5 minutes. Ignore the standard errors (which are in parentheses). I used a package to get the three models in the same table for easy comparison, but there is a bug in how it displays SE/CIs. 
 
 #### Zones (5) 
 
@@ -1826,7 +1831,7 @@ res_hi %>%
 temp_df = 
   mapping %>% 
   select(id, contains("shell")) %>% 
-  rename_with(.cols = -id, ~sub("shell", "zone", .x))
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) 
 
 cor_mat = 
   temp_df %>% 
@@ -1899,7 +1904,8 @@ p1 + p3 + p2 + plot_layout(guides = "collect") + plot_annotation(title = "Pearso
 temp_df = 
   mapping %>% 
   select(id, contains("shell")) %>% 
-  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>%
+  mutate(across(contains("zone"), ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>% 
   select(-id)
 
@@ -1914,7 +1920,8 @@ model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 temp_df = 
   mapping_cilow %>% 
   select(id, contains("shell")) %>% 
-  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>%
+  mutate(across(contains("zone"), ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>% 
   select(-id)
 
@@ -1923,7 +1930,8 @@ model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 temp_df = 
   mapping_cihigh %>% 
   select(id, contains("shell")) %>% 
-  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>% 
+  rename_with(.cols = -id, ~sub("shell", "zone", .x)) %>%
+  mutate(across(contains("zone"), ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>% 
   select(-id)
 
@@ -1931,7 +1939,12 @@ model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 
 stargazer(model, model_lo, model_hi,
           column.labels=c("Overall","CI <2", "CI >= 2"), align=TRUE,
-         type = "text")
+         type = "text",
+         apply.coef = exp,
+         single.row = TRUE,
+         # ci = TRUE,
+         # apply.ci = exp,
+         p.auto = FALSE)
 
 
 ```
@@ -2018,6 +2031,7 @@ p1 + p3 + p2 + plot_layout(guides = "collect") + plot_annotation(title = "Pearso
 temp_df = 
   mapping %>% 
   select(id, contains("zone")) %>% 
+  mutate(across(contains("zone"), ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
   select(-id)
 
@@ -2027,6 +2041,7 @@ model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 temp_df = 
   mapping_cilow %>% 
   select(id, contains("zone")) %>% 
+  mutate(across(contains("zone"), ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
   select(-id)
 
@@ -2035,6 +2050,7 @@ model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 temp_df = 
   mapping_cihigh %>% 
   select(id, contains("zone")) %>% 
+  mutate(across(contains("zone"), ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
   select(-id)
 
@@ -2042,8 +2058,12 @@ model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 
 stargazer(model, model_lo, model_hi,
           column.labels=c("Overall","CI <2", "CI >= 2"), align=TRUE,
-         type = "text")
-
+         type = "text",
+         apply.coef = exp,
+         single.row = TRUE,
+         # ci = TRUE,
+         # apply.ci = exp,
+         p.auto = FALSE)
 
 ```
 
@@ -2130,6 +2150,8 @@ p1 + p3 + p2 + plot_layout(guides = "collect") + plot_annotation(title = "Pearso
 ```{r pzones reg all}
 temp_df = 
   pzones %>% 
+  mutate(across(-id, ~.x / 5)) %>% 
+  janitor::clean_names() %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
   select(-id)
 
@@ -2138,6 +2160,8 @@ model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
   
 temp_df = 
   pzones_low %>% 
+  mutate(across(-id, ~.x / 5)) %>% 
+  janitor::clean_names() %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
   select(-id)
 
@@ -2145,19 +2169,153 @@ model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 
 temp_df = 
   pzones_hi %>% 
+  janitor::clean_names() %>% 
+  mutate(across(-id, ~.x / 5)) %>% 
   left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
   select(-id)
 
 model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
 
 stargazer(model, model_lo, model_hi,
-          column.labels=c("Overall", "CI <2", "CI >= 2"), align=TRUE)
-         
-
-
+          column.labels=c("Overall", "CI <2", "CI >= 2"), align=TRUE,
+         type = "text",
+         apply.coef = exp,
+         single.row = TRUE,
+         # apply.ci = exp,
+         # ci = TRUE,
+         p.auto = FALSE)
 ```
 
 ```{r vif3, eval = FALSE}
+car::vif(model)
+car::vif(model_lo)
+car::vif(model_hi)
+```
+
+
+
+#### Physiological Zones by CPB
+
+```{r pzones 3 correlation cpb}
+temp_df = 
+  pzones_cpb %>% 
+  magrittr::set_colnames(c("id", "lo map lo cvp", "lo map hi cvp", "hi map lo cvp", "hi map hi cvp", "cpb")) %>% 
+  pivot_wider(names_from = cpb, values_from = -c(cpb, id))
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+p1 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "Unstratified",
+           p.mat = p_mat,
+           lab_size = 3) 
+
+temp_df = 
+  pzones_hi_cpb %>% 
+  magrittr::set_colnames(c("id", "lo map lo cvp", "lo map hi cvp", "hi map lo cvp", "hi map hi cvp", "cpb")) %>% 
+  pivot_wider(names_from = cpb, values_from = -c(cpb, id))
+
+
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+
+
+p2 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI >= 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+temp_df = 
+  pzones_low_cpb %>% 
+  magrittr::set_colnames(c("id", "lo map lo cvp", "lo map hi cvp", "hi map lo cvp", "hi map hi cvp", "cpb")) %>% 
+  pivot_wider(names_from = cpb, values_from = -c(cpb, id))
+
+
+cor_mat = 
+  temp_df %>% 
+  select(-id) %>% 
+  cor(use = "na.or.complete", method = "pearson")
+
+p_mat = ggcorrplot::cor_pmat(temp_df %>% 
+  select(-id))
+  
+p3 = ggcorrplot(cor_mat,
+           type = "lower",
+           ggtheme = ggplot2::theme_light,
+           show.diag = FALSE,
+           lab = TRUE,
+           title = "CI < 2",
+           p.mat = p_mat,
+           lab_size = 3)
+
+
+p1 
+p2 
+p3
+```
+
+```{r pzones reg all cpb}
+temp_df = 
+  pzones_cpb %>% 
+  pivot_wider(names_from = cat_cpb, values_from = -c(cat_cpb, id)) %>% 
+  mutate(across(-id, ~.x / 5)) %>% 
+  janitor::clean_names() %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+  
+temp_df = 
+  pzones_low_cpb %>% 
+  pivot_wider(names_from = cat_cpb, values_from = -c(cat_cpb, id)) %>% 
+  mutate(across(-id, ~.x / 5)) %>% 
+  janitor::clean_names() %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model_lo = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+temp_df = 
+  pzones_hi_cpb %>% 
+  pivot_wider(names_from = cat_cpb, values_from = -c(cat_cpb, id)) %>% 
+  janitor::clean_names() %>% 
+  mutate(across(-id, ~.x / 5)) %>% 
+  left_join(df %>% select(id, bin_aki48h, all_of(covars_control)), by = "id") %>%
+  select(-id)
+
+model_hi = glm(bin_aki48h ~ ., data = temp_df, family = binomial())
+
+stargazer(model, model_lo, model_hi,
+          column.labels=c("Overall", "CI <2", "CI >= 2"), align=TRUE,
+         type = "text",
+         apply.coef = exp,
+         single.row = TRUE,
+         # apply.ci = exp,
+         # ci = TRUE,
+         p.auto = FALSE)
+```
+
+```{r vif3 cpb, eval = FALSE}
 car::vif(model)
 car::vif(model_lo)
 car::vif(model_hi)
