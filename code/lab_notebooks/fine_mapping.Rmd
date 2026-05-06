@@ -95,12 +95,7 @@ covars_control = df %>%
 
 aki_ids = df %>% filter(bin_aki48h == 1) %>% pull(id)
 
-# read in cvp 26 
-mapping_ext_hi = read_rds(here::here("data", "analysis", "mapcvp26_ranges_hici.rds"))
 
-mapping_ext_low = read_rds(here::here("data", "analysis", "mapcvp26_ranges_lowci.rds"))
-
-mapping_ext = read_rds(here::here("data", "analysis", "mapcvp26_ranges.rds"))
 ```
 
 **For all of the below analysis, I am excluding intra-CPB** 
@@ -124,14 +119,14 @@ hemo %>%
   ggplot(aes(x = val_cvp)) +
   geom_histogram(binwidth = 1, color = "black", fill = col2a) +
   labs(x = "CVP", y = "Count of Measurements") +
-  scale_x_continuous(breaks = seq(0, 26, 2))
+  scale_x_continuous(breaks = seq(0, 40, 2))
 
 hemo %>% 
   filter(cat_cpb != "intra") %>% 
   ggplot(aes(x = val_cvp)) +
   geom_boxplot() +
   labs(x = "CVP", y = "") +
-  scale_x_continuous(breaks = seq(0, 26, 2)) +
+  scale_x_continuous(breaks = seq(0, 40, 2)) +
   theme(axis.text.y = element_blank(),
         axis.ticks.y = element_blank())
 
@@ -189,13 +184,13 @@ joined %>%
   geom_histogram(binwidth = 1, color = "black") +
   facet_grid(cohort ~ ., scales = "free_y") +
   labs(x = "CVP", y = "Count of measurements") +
-  scale_x_continuous(breaks = seq(0, 26, 2))
+  scale_x_continuous(breaks = seq(0, 40, 2))
 
 joined %>% 
   ggplot(aes(x = cohort, y = val_cvp)) +
   geom_boxplot() +
   labs(x = "Cohort", y = "CVP") +
-  scale_y_continuous(breaks = seq(0, 26, 2))
+  scale_y_continuous(breaks = seq(0, 40, 2))
 
 ```
 

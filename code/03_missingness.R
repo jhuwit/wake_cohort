@@ -79,6 +79,7 @@ hemo_interp %>%
 
 
 
+
 ### missingness 
 
 missing_map_all =
@@ -219,13 +220,21 @@ exclusion_summary =
 exclusion_summary = exclusion_summary %>% 
   mutate(wrong_procedure = !(id %in% covars$id),
          excluded_creat = id %in% crt4,
-         mult_proc = id %in% mult_proc) %>% 
-  rowwise() %>% 
-  mutate(exclude_hemo = if_any(contains("is_"), ~ .x == TRUE),
-           excluded = case_when(if_any(contains("is_"), ~ .x == TRUE) ~ TRUE,
-                              if_any(contains("has"), ~ .x == TRUE) ~ TRUE,
-                              .default = FALSE)) %>% 
-  ungroup() 
+         mult_proc = id %in% mult_proc) %>%
+  mutate(
+    exclude_hemo = rowSums(across(contains("is_"))) > 0,
+    excluded = rowSums(across(contains("is_") | contains("has"))) > 0
+  )
+# exclusion_summary = exclusion_summary %>% 
+#   mutate(wrong_procedure = !(id %in% covars$id),
+#          excluded_creat = id %in% crt4,
+#          mult_proc = id %in% mult_proc) %>% 
+#   rowwise() %>% 
+#   mutate(exclude_hemo = if_any(contains("is_"), ~ .x == TRUE),
+#            excluded = case_when(if_any(contains("is_"), ~ .x == TRUE) ~ TRUE,
+#                               if_any(contains("has"), ~ .x == TRUE) ~ TRUE,
+#                               .default = FALSE)) %>% 
+#   ungroup() 
 
 sum(exclusion_summary$excluded)
 
