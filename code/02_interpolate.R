@@ -25,7 +25,7 @@ library(future)
 library(patchwork)
 options(digits.secs = 2)
 rm(list = ls())
-force = FALSE
+force = TRUE
 
 source(here::here("code", "processing_fns.R"))
 source(here::here("code", "filtering_settings.R"))

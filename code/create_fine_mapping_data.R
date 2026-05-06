@@ -42,6 +42,8 @@ map_cvp_cihi =
 
 write_rds(map_cvp_cihi, here::here("data", "analysis", "mapcvp_ranges_hici.rds"))
 
+
+
 ### map ranges, overall and stratified 
 thresholds = seq(45, 115, 5)
 map_data = get_ranges(hemo_data = hemo_data %>% filter(cat_cpb != "intra"),
@@ -455,3 +457,33 @@ map_cvp_cihi = map_cvp_cihi_pre %>% mutate(cat_cpb = "pre") %>%
 
 
 write_rds(map_cvp_cihi, here::here("data", "analysis", "pzones_hici_cpb.rds"))
+
+
+## with cvp up to 26
+### map cvp ranges, overall and stratified 
+map_cvp = 
+  get_ranges2(hemo_data %>% filter(cat_cpb != "intra"),
+              thresh1 = seq(45, 115, 10),
+              var1 = "val_map",
+              thresh2 = seq(0, 26, 2),
+              var2 = "val_cvp")
+
+write_rds(map_cvp, here::here("data", "analysis", "mapcvp26_ranges.rds"))
+
+map_cvp_cilow = 
+  get_ranges2(hemo_data %>% filter(cat_cpb != "intra", val_ci < 2),
+              thresh1 = seq(45, 115, 10),
+              var1 = "val_map",
+              thresh2 = seq(0, 26, 2),
+              var2 = "val_cvp")
+
+write_rds(map_cvp_cilow, here::here("data", "analysis", "mapcvp26_ranges_lowci.rds"))
+
+map_cvp_cihi = 
+  get_ranges2(hemo_data %>% filter(cat_cpb != "intra", val_ci >= 2),
+              thresh1 = seq(45, 115, 10),
+              var1 = "val_map",
+              thresh2 = seq(0, 26, 2),
+              var2 = "val_cvp")
+
+write_rds(map_cvp_cihi, here::here("data", "analysis", "mapcvp26_ranges_hici.rds"))

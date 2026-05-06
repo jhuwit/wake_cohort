@@ -95,7 +95,12 @@ covars_control = df %>%
 
 aki_ids = df %>% filter(bin_aki48h == 1) %>% pull(id)
 
-# read in 
+# read in cvp 26 
+mapping_ext_hi = read_rds(here::here("data", "analysis", "mapcvp26_ranges_hici.rds"))
+
+mapping_ext_low = read_rds(here::here("data", "analysis", "mapcvp26_ranges_lowci.rds"))
+
+mapping_ext = read_rds(here::here("data", "analysis", "mapcvp26_ranges.rds"))
 ```
 
 **For all of the below analysis, I am excluding intra-CPB** 
