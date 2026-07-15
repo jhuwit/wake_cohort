@@ -1,4 +1,4 @@
-This repository contains the code for joint mapping of MAP and CI in the WAKE cohort of CABG surgeries and accompanies xx manuscript. 
+This repository contains the code for joint mapping of MAP and CI in the WAKE cohort of CABG surgeries and accompanies the manuscript [Low cardiac index during periods of arterial hypotension and risk of acute kidney injury in cardiac surgery](https://doi.org/10.1016/j.bja.2026.02.037) in *British Journal of Anaesthesia*  
 
 Files are as follows: 
 
