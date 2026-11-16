@@ -11,11 +11,13 @@ date: 09/05/2025
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, cache = FALSE)
 
 library(here)
-library(ggpubr)
-library(tidyverse)
+# library(ggpubr)
+# library(tidyverse)
+library(dplyr)
 library(tidymodels)
 library(patchwork)
 library(gt) 
+library(ggplot2)
 library(gtsummary)
 library(paletteer)
 theme_set(theme_light())
@@ -223,7 +225,7 @@ t
 ```{r}
 ci_tertiles = 
   ci_data %>% 
-  summarize(across(ci_20, ~quantile(.x, c(1/3, 2/3)))) %>% 
+  reframe(across(ci_20, ~quantile(.x, c(1/3, 2/3)))) %>% 
   pull(ci_20)
 ci_tertiles 
 temp_ci = 
@@ -267,7 +269,7 @@ map_65_cpb =
             .groups = "drop") 
 map_tertiles = 
   map_65 %>% 
-  summarize(across(map_65, ~quantile(.x, c(1/3, 2/3), na.rm = TRUE))) %>% 
+  reframe(across(map_65, ~quantile(.x, c(1/3, 2/3), na.rm = TRUE))) %>% 
   pull(map_65)
 map_tertiles 
 temp_map = 
@@ -391,7 +393,7 @@ map_65_ci2 =
 
 map_tertiles = 
   map_65_ci2 %>% 
-  summarize(across(map65_ci2, ~quantile(.x, c(1/3, 2/3)))) %>% 
+  reframe(across(map65_ci2, ~quantile(.x, c(1/3, 2/3)))) %>% 
   pull(map65_ci2)
 map_tertiles 
 
@@ -803,8 +805,10 @@ model = glm(
 #   broom::tidy(exponentiate = TRUE) %>% 
 #   mutate(p.value = format.pval(p.value, digits = 2))
 
-model %>% 
-  jtools::summ(exp = TRUE)
+# model %>% 
+#   jtools::summ(exp = TRUE)
+
+broom::tidy(model, exponentiate = TRUE, conf.int = TRUE)
 
 model %>% 
   broom::tidy(exponentiate = TRUE) %>% 
@@ -873,8 +877,10 @@ model = glm(
   family = binomial()
 )
 
-model %>% 
-  jtools::summ(exp = TRUE)
+# model %>% 
+#   jtools::summ(exp = TRUE)
+
+broom::tidy(model, exponentiate = TRUE, conf.int = TRUE)
 
 model %>% 
   broom::tidy(exponentiate = TRUE) %>% 
@@ -913,8 +919,10 @@ m0 = glm(bin_aki48h ~ map_65,
          data = df %>% mutate(map_65 = map_65 / 5),
          family = binomial())
 
-m0 %>% 
-  jtools::summ(exp = TRUE)
+# m0 %>% 
+#   jtools::summ(exp = TRUE)
+
+broom::tidy(m0, exponentiate = TRUE, conf.int = TRUE)
 ```
 
 **MAP < 60 univariate model** 
@@ -924,9 +932,10 @@ m0 = glm(bin_aki48h ~ map_60,
          data = df2 %>% mutate(map_60 = map_60 / 5),
          family = binomial())
 
-m0 %>% 
-  jtools::summ(exp = TRUE)
+# m0 %>% 
+#   jtools::summ(exp = TRUE)
 
+broom::tidy(m0, exponentiate = TRUE, conf.int = TRUE)
 ```
 
 **MAP < 65 multivariate model**
@@ -1037,8 +1046,10 @@ m1_temp =
 ```
 
 ```{r}
-m1 %>% 
-  jtools::summ(exp = TRUE)
+# m1 %>% 
+#   jtools::summ(exp = TRUE)
+
+broom::tidy(m1, exponentiate = TRUE, conf.int = TRUE)
 ```
 
 **MAP < 60 multivariate model**
@@ -1073,8 +1084,10 @@ m1a = glm(
   family = binomial()
 )
 
-m1a %>% 
-  jtools::summ(exp = TRUE)
+# m1a %>% 
+#   jtools::summ(exp = TRUE)
+
+broom::tidy(m1a, exponentiate = TRUE, conf.int = TRUE)
 ```
 
 
@@ -1082,9 +1095,10 @@ m1a %>%
 **MAP < 65 and MAP/CI multivariate model** 
 
 ```{r}
-m2 %>% 
-  jtools::summ(exp = TRUE)
+# m2 %>% 
+#   jtools::summ(exp = TRUE)
 
+broom::tidy(m2, exponentiate = TRUE, conf.int = TRUE)
 ```
 
 **ANOVA comparing full and reduced model** 
@@ -1156,16 +1170,18 @@ m2 =
   family = binomial()
 )
 
-m2 %>% 
-  jtools::summ(exp = TRUE)
+# m2 %>% 
+#   jtools::summ(exp = TRUE)
+
+broom::tidy(m2, exponentiate = TRUE, conf.int = TRUE)
 anova(m1, m2, test = "F")
 ```
 
 ## Substitution 
 
-Sub 5 minutes MAP < 65, CI in quartile 1 (<2) to 5 minutes MAP < 65, CI in quartile 2 (2-2.4)
 
-```{r}
+```{r, eval = FALSE}
+# Sub 5 minutes MAP < 65, CI in quartile 1 (<2) to 5 minutes MAP < 65, CI in quartile 2 (2-2.4)
 m1 = 
   glm(
   bin_aki48h ~ .,
@@ -1216,8 +1232,8 @@ Sub 5 minutes MAP < 65, CI < 2 to 5 minutes MAP < 65, CI >= 2
 
 df2 = 
   df %>% 
-  left_join(four_cats, by = "id") %>% 
-  select(-map_65)
+  left_join(four_cats, by = "id") 
+  # select(-map_65)
 m1 = glm(
   bin_aki48h ~ low_map_low_ci+  low_map_hi_ci + 
     hi_map_low_ci + hi_map_hi_ci + 
@@ -1244,6 +1260,7 @@ m1 = glm(
   data = df2 %>%  mutate(across(contains("map"), ~ .x / 5)),
   family = binomial()
 )
+# add to low map hi CI (INCREASE CI)
 k  <- matrix(c(0, -1, 1, rep(0, length(coef(m1)) - 3)), 1)
 contr <- multcomp::glht(m1, linfct = k)
 summary(contr)
@@ -1256,52 +1273,22 @@ exp(pt_est)
 exp(c(pt_est - (1.96 * se), pt_est + (1.96 * se)))
 
 
-
 ```
+
+
 Sub 5 minutes MAP < 65, CI < 2 with 5 minutes MAP >= 65, CI < 2
 
 ```{r}
-m1 = 
-  glm(
-  bin_aki48h ~ .,
-  data = df %>% select(
-    contains("q"),
-    bin_aki48h,
-    cat_gender,
-    val_creatlst,
-    val_age,
-    val_bmi,
-    bin_htn,
-    bin_diabetes,
-    bin_stroke,
-    bin_ef40,
-    bin_mi,
-    bin_chf,
-    bin_pvd,
-    bin_cld,
-    bin_betablocker,
-    bin_acearb,
-    bin_statin,
-    bin_redo,
-    bin_emergent,
-    val_crystalloid,
-    val_cpbtime,
-    cat_rbc
-  ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
-  family = binomial()
-)
 
-k  <- matrix(c(0, -1, 0, 0, 0, 1, rep(0, length(coef(m1)) - 6)), 1)
+k  <- matrix(c(0, -1, 0, 1, rep(0, length(coef(m1)) - 4)), 1)
 contr <- multcomp::glht(m1, linfct = k)
 summary(contr)
 
-pt_est = -0.14156 
-se = 0.05262
+pt_est = -0.14819
+se = 0.05828
 exp(pt_est)
 
 exp(c(pt_est - (1.96 * se), pt_est + (1.96 * se)))
-
-
 
 ```
 
@@ -2549,17 +2536,23 @@ m2 = glm(
 
 
 
+# 
+# jtools::export_summs(m0, m01, m1, m2, exp = TRUE,
+#                      model.names = c("Uni", "MAP+Proctime", "MAP+Proctime+Demo", "MAP+Proctime+Demo+Intraop"),
+#                      error_format = "(p = {p.value})",
+#                      coefs = c("MAP<65" = "map_65",
+#                                "CPB time" = "val_cpbtime",
+#                                "Proc time" = "val_proctime",
+#                                "Crystalloid" = "val_crystalloid",
+#                                "RBC 0" = "cat_rbc0",
+#                                "RBC 1" = "cat_rbc1"))
 
-jtools::export_summs(m0, m01, m1, m2, exp = TRUE,
-                     model.names = c("Uni", "MAP+Proctime", "MAP+Proctime+Demo", "MAP+Proctime+Demo+Intraop"),
-                     error_format = "(p = {p.value})",
-                     coefs = c("MAP<65" = "map_65",
-                               "CPB time" = "val_cpbtime",
-                               "Proc time" = "val_proctime",
-                               "Crystalloid" = "val_crystalloid",
-                               "RBC 0" = "cat_rbc0",
-                               "RBC 1" = "cat_rbc1"))
 
+tbls = lapply(list(m0, m01, m1, m2), tbl_regression, exponentiate = TRUE)
+
+tbl_merge(tbls,
+          tab_spanner = c("Uni", "MAP+Proctime",
+                          "MAP+Proctime+Demo", "MAP+Proctime+Demo+Intraop"))
 
 ```
 
@@ -2671,17 +2664,22 @@ m3 =
   family = binomial()
 )
 
-jtools::export_summs(m0, m1, m2, m3, exp = TRUE,
-                     model.names = c("Uni", "CPB only", "Crystll only", "RBC only"),
-                     error_format = "(p = {p.value})",
-                     coefs = c("MAP<65" = "map_65",
-                               "CPB time" = "val_cpbtime",
-                               "Proc time" = "val_proctime",
-                               "Crystalloid" = "val_crystalloid",
-                               "RBC 0" = "cat_rbc0",
-                               "RBC 1" = "cat_rbc1"))
+# jtools::export_summs(m0, m1, m2, m3, exp = TRUE,
+#                      model.names = c("Uni", "CPB only", "Crystll only", "RBC only"),
+#                      error_format = "(p = {p.value})",
+#                      coefs = c("MAP<65" = "map_65",
+#                                "CPB time" = "val_cpbtime",
+#                                "Proc time" = "val_proctime",
+#                                "Crystalloid" = "val_crystalloid",
+#                                "RBC 0" = "cat_rbc0",
+#                                "RBC 1" = "cat_rbc1"))
 
 
+tbls <- lapply(list(m0, m01, m1, m2), tbl_regression, exponentiate = TRUE)
+
+tbl_merge(tbls,
+          tab_spanner = c("Uni", "CPB Only",
+                          "Crystll Only", "RBC Only"))
 ```
 
 ```{r}
@@ -2809,15 +2807,21 @@ m7 =
   ) %>% mutate(across(c(contains("q"), contains("map")), ~ .x / 5)),
   family = binomial())
 
-jtools::export_summs(m4, m5, m6, m7, exp = TRUE,
-                     model.names = c("Cry+CPB", "Cry+RBC", "CPB+RBC", "All"),
-                     error_format = "(p = {p.value})",
-                     coefs = c("MAP<65" = "map_65",
-                               "CPB time" = "val_cpbtime",
-                                "Proc time" = "val_proctime",
-                               "Crystalloid" = "val_crystalloid",
-                               "RBC 0" = "cat_rbc0",
-                               "RBC 1" = "cat_rbc1"))
+# jtools::export_summs(m4, m5, m6, m7, exp = TRUE,
+#                      model.names = c("Cry+CPB", "Cry+RBC", "CPB+RBC", "All"),
+#                      error_format = "(p = {p.value})",
+#                      coefs = c("MAP<65" = "map_65",
+#                                "CPB time" = "val_cpbtime",
+#                                 "Proc time" = "val_proctime",
+#                                "Crystalloid" = "val_crystalloid",
+#                                "RBC 0" = "cat_rbc0",
+#                                "RBC 1" = "cat_rbc1"))
+
+
+tbls <- lapply(list(m4, m5, m6, m7), tbl_regression, exponentiate = TRUE)
+
+tbl_merge(tbls,
+          tab_spanner = c(c("Cry+CPB", "Cry+RBC", "CPB+RBC", "All")))
 
 ```
 

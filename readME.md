@@ -32,6 +32,10 @@ Files are as follows:
   + purpose: regressions and statistical tests for manuscript
 + `08_plots.R`
   + purpose: figures for manuscript
++ `09_substitution.R`
+  + purpose: substitution analyses (coefficient contrasts) for manuscript
++ `10_risk_estimates.R`
+  + purpose: translating coefficient contrasts into risk estimates 
 
 ### Utilities 
 
